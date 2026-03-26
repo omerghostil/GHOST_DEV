@@ -18,14 +18,16 @@ import {
 } from './schemas'
 import type { ChannelUsageField } from '../db/repository-types'
 import { USER_ROLES } from './types'
-import type { RealtimeHub } from '../realtime/ws-hub'
+import type { IRealtimeHub } from '../realtime/realtime-hub-types'
+import { createFirebaseUser } from '../auth/firebase-auth-service'
 
 interface CreateAdminRouterOptions {
   store: IAdminRepository
-  realtimeHub: RealtimeHub
+  realtimeHub: IRealtimeHub
 }
 
 const SENSITIVE_ADMIN_CODE = process.env.SUPER_ADMIN_MANAGER_CODE?.trim() || '1553'
+const IS_FIREBASE_AUTH_MODE = Boolean(process.env.FIREBASE_PROJECT_ID)
 
 function isSuperAdminRole(role: string): boolean {
   return role === USER_ROLES.superAdmin
@@ -88,7 +90,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       return response.status(400).json({ error: 'בקשת עדכון ארגון לא תקינה.' })
     }
     try {
-      const updated = store.updateOrganization(request.params.organizationId, (organization) => ({
+      const updated = store.updateOrganization(String(request.params.organizationId), (organization) => ({
         ...organization,
         name: parsed.data.name ?? organization.name,
         status: parsed.data.status ?? organization.status,
@@ -122,7 +124,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     )
   })
 
-  router.post('/users', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), (request, response) => {
+  router.post('/users', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), async (request, response) => {
     const parsed = CreateUserSchema.safeParse(request.body)
     if (!parsed.success) {
       return response.status(400).json({ error: 'בקשת יצירת משתמש לא תקינה.' })
@@ -137,8 +139,18 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       return response.status(409).json({ error: 'שם המשתמש כבר קיים במערכת.' })
     }
 
+    let firebaseUid: string | undefined
+    if (IS_FIREBASE_AUTH_MODE) {
+      try {
+        firebaseUid = await createFirebaseUser(parsed.data.username, parsed.data.password)
+      } catch (error) {
+        console.warn('Firebase Auth user creation failed, falling back to local hash:', error)
+      }
+    }
+
     const user = store.createUser({
       ...parsed.data,
+      ...(firebaseUid ? { firebaseUid } : {}),
       passwordHash: hashPassword(parsed.data.password),
     })
 
@@ -160,7 +172,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     if (!parsed.success) {
       return response.status(400).json({ error: 'בקשת עדכון משתמש לא תקינה.' })
     }
-    const existingUser = store.findUserById(request.params.userId)
+    const existingUser = store.findUserById(String(request.params.userId))
     if (!existingUser) {
       return response.status(404).json({ error: 'המשתמש לא נמצא.' })
     }
@@ -171,7 +183,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       return response.status(403).json({ error: 'אין הרשאה לעדכון משתמש בארגון זה.' })
     }
 
-    const updated = store.updateUser(request.params.userId, (user) => ({
+    const updated = store.updateUser(String(request.params.userId), (user) => ({
       ...user,
       role: parsed.data.role ?? user.role,
       isActive: parsed.data.isActive ?? user.isActive,
@@ -508,11 +520,11 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
   router.get('/dashboard/org/:organizationId', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), (request, response) => {
     if (
       request.auth &&
-      !canManageOrganization(request.params.organizationId, request.auth.organizationId, request.auth.role)
+      !canManageOrganization(String(request.params.organizationId), request.auth.organizationId, request.auth.role)
     ) {
       return response.status(403).json({ error: 'אין הרשאה לארגון זה.' })
     }
-    const organization = store.getOrganizationById(request.params.organizationId)
+    const organization = store.getOrganizationById(String(request.params.organizationId))
     if (!organization) {
       return response.status(404).json({ error: 'הארגון לא נמצא.' })
     }
@@ -520,13 +532,13 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     return response.json({
       organization,
-      channels: store.listChannels(request.params.organizationId),
-      campaigns: store.listCampaigns(request.params.organizationId),
+      channels: store.listChannels(String(request.params.organizationId)),
+      campaigns: store.listCampaigns(String(request.params.organizationId)),
       users: store
-        .listUsersByOrganization(request.params.organizationId)
+        .listUsersByOrganization(String(request.params.organizationId))
         .map((user) => ({ ...user, passwordHash: undefined })),
-      usageLedger: store.listUsageLedger(request.params.organizationId),
-      channelStats: store.getChannelUsageMonthly(request.params.organizationId, currentMonthKey),
+      usageLedger: store.listUsageLedger(String(request.params.organizationId)),
+      channelStats: store.getChannelUsageMonthly(String(request.params.organizationId), currentMonthKey),
     })
   })
 
@@ -543,7 +555,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     if (!parsed.success) {
       return response.status(400).json({ error: 'בקשת עדכון תקלה לא תקינה.' })
     }
-    const issue = store.listIssues().find((row) => row.id === request.params.issueId)
+    const issue = store.listIssues().find((row) => row.id === String(request.params.issueId))
     if (!issue) {
       return response.status(404).json({ error: 'התקלה לא נמצאה.' })
     }
@@ -553,7 +565,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     ) {
       return response.status(403).json({ error: 'אין הרשאה לעדכן תקלה זו.' })
     }
-    const updated = store.updateIssue(request.params.issueId, (row) => ({
+    const updated = store.updateIssue(String(request.params.issueId), (row) => ({
       ...row,
       status: parsed.data.status,
       updatedAtIso: new Date().toISOString(),
@@ -563,7 +575,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       organizationId: updated.organizationId,
       severity: 'info',
       timestampIso: new Date().toISOString(),
-      payload: updated,
+      payload: updated as unknown as Record<string, unknown>,
     })
     return response.json(updated)
   })

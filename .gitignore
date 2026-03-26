@@ -12,12 +12,21 @@ dist
 dist-ssr
 *.local
 .env
+functions/.env
+functions/lib
+functions/node_modules
 
 # SQLite local DB files
 server/db/sqlite/*.db
 server/db/sqlite/*.db-wal
 server/db/sqlite/*.db-shm
 server/db/admin-data.json
+
+# Firebase cache
+.firebase/
+
+# Cursor IDE
+.cursor/
 
 # Editor directories and files
 .vscode/*

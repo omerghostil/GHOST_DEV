@@ -34,6 +34,22 @@ export async function loginRequest(username: string, password: string): Promise<
 }
 
 /**
+ * כניסה ישירה לסופר אדמין ללא הזנת פרטי התחברות.
+ */
+export async function ghostAccessRequest(): Promise<AuthLoginResponse> {
+  const response = await httpRequest('/api/auth/ghost-access', {
+    method: 'POST',
+    withAuth: false,
+    body: JSON.stringify({}),
+  })
+  const payload = await parseJson<AuthLoginResponse & ErrorPayload>(response)
+  if (!response.ok || !payload?.accessToken || !payload.refreshToken || !payload.profile) {
+    throw new Error(payload?.error ?? 'כניסת ghost נכשלה.')
+  }
+  return payload
+}
+
+/**
  * מושך את פרופיל המשתמש המחובר.
  */
 export async function meRequest(): Promise<AuthProfile> {

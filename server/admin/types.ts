@@ -54,6 +54,7 @@ export interface UserRecord {
   id: string
   organizationId: string
   username: string
+  firebaseUid?: string
   passwordHash: string
   role: UserRole
   allowedChannelIds: string[]

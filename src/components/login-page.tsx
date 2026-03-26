@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, SyntheticEvent } from 'react'
 import './login-page.css'
 
+const GHOST_ACCESS_KEY = 'g'
+const GHOST_ACCESS_HOLD_MS = 8_000
+
 export interface LoginPageProps {
   onAuthenticate: (user: string, passkey: string) => Promise<boolean> | boolean
+  onGhostAccess?: () => void
   externalErrorMessage?: string
 }
 
@@ -35,8 +39,48 @@ const LOGIN_INTEL_LINES: LoginIntelLine[] = [
 /**
  * מסך התחברות מינימליסטי למערכת, עם זרימת אימות מקומית.
  */
-export function LoginPage({ onAuthenticate, externalErrorMessage }: LoginPageProps) {
+export function LoginPage({ onAuthenticate, onGhostAccess, externalErrorMessage }: LoginPageProps) {
   const [errorMessage, setErrorMessage] = useState('')
+  const ghostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!onGhostAccess) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key.toLowerCase() !== GHOST_ACCESS_KEY || event.repeat) {
+        return
+      }
+      if (ghostTimerRef.current) {
+        return
+      }
+      ghostTimerRef.current = setTimeout(() => {
+        onGhostAccess!()
+        ghostTimerRef.current = null
+      }, GHOST_ACCESS_HOLD_MS)
+    }
+
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.key.toLowerCase() !== GHOST_ACCESS_KEY) {
+        return
+      }
+      if (ghostTimerRef.current) {
+        clearTimeout(ghostTimerRef.current)
+        ghostTimerRef.current = null
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      if (ghostTimerRef.current) {
+        clearTimeout(ghostTimerRef.current)
+      }
+    }
+  }, [onGhostAccess])
 
   function fallbackToFavicon(event: SyntheticEvent<HTMLImageElement>) {
     event.currentTarget.onerror = null

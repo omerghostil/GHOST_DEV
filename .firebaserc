@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "ghost-prod-fc874"
+  },
+  "targets": {
+    "ghost-prod-fc874": {
+      "hosting": {
+        "prod": [
+          "ghost-prod-fc874"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

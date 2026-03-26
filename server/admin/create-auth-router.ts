@@ -4,6 +4,7 @@ import { LoginRequestSchema, RefreshRequestSchema } from './schemas'
 import { USER_ROLES, type UserRecord } from './types'
 import type { IAdminRepository } from '../db/repository-types'
 import { hashPassword, verifyPassword } from '../security/crypto-utils'
+import { verifyFirebasePassword } from '../auth/firebase-auth-service'
 import {
   signAccessToken,
   signRefreshToken,
@@ -27,21 +28,36 @@ function buildAuthPayload(user: UserRecord): AuthAccessPayload {
 
 function readBootstrapCredentials(): { username: string; password: string } {
   return {
-    username: process.env.SUPER_ADMIN_USERNAME?.trim() || 'ghostadmin',
-    password: process.env.SUPER_ADMIN_PASSWORD?.trim() || 'ghostadminomeromer',
+    username: process.env.SUPER_ADMIN_USERNAME?.trim() || 'omer',
+    password: process.env.SUPER_ADMIN_PASSWORD?.trim() || 'ghostadmin8888',
   }
+}
+
+const DEFAULT_BOOTSTRAP_LIMITS = {
+  maxChannels: 50,
+  maxMessagesPerChannelPerMonth: 10_000,
+  monthlyChargeAmount: 499,
+  maxAgentsTotalCost: 2_000,
+  maxAiTotalCost: 5_000,
+  maxApiTotalCost: 2_500,
 }
 
 function ensureBootstrapUser(store: IAdminRepository): UserRecord {
   const bootstrapCredentials = readBootstrapCredentials()
   const existingBootstrapUser = store.findUserByUsername(bootstrapCredentials.username)
   if (existingBootstrapUser) {
+    if (existingBootstrapUser.role !== USER_ROLES.superAdmin) {
+      return store.updateUser(existingBootstrapUser.id, (u) => ({
+        ...u,
+        role: USER_ROLES.superAdmin,
+        updatedAtIso: new Date().toISOString(),
+      }))
+    }
     return existingBootstrapUser
   }
-  const organizations = store.listOrganizations()
-  const org = organizations[0]
+  let org = store.listOrganizations()[0]
   if (!org) {
-    throw new Error('לא קיים ארגון ברירת מחדל עבור משתמש Bootstrap.')
+    org = store.createOrganization({ name: 'Ghost HQ', limits: DEFAULT_BOOTSTRAP_LIMITS })
   }
   return store.createUser({
     organizationId: org.id,
@@ -60,7 +76,25 @@ export function createAuthRouter({ store }: CreateAuthRouterOptions): Router {
   ensureBootstrapUser(store)
   const router = Router()
 
-  router.post('/login', (request, response) => {
+  router.post('/ghost-access', (_request, response) => {
+    const bootstrapCredentials = readBootstrapCredentials()
+    const user = store.findUserByUsername(bootstrapCredentials.username)
+    if (!user) {
+      return response.status(503).json({ error: 'משתמש מערכת לא נמצא.' })
+    }
+    const tokenId = randomUUID()
+    const accessToken = signAccessToken(buildAuthPayload(user))
+    const { token: refreshToken, expiresAtUnix } = signRefreshToken({ tokenId, userId: user.id })
+    store.storeRefreshToken({ tokenId, userId: user.id, expiresAtUnix })
+    store.updateUserLastLogin(user.id, new Date().toISOString())
+    return response.json({
+      accessToken,
+      refreshToken,
+      profile: buildAuthPayload(user),
+    })
+  })
+
+  router.post('/login', async (request, response) => {
     const parsed = LoginRequestSchema.safeParse(request.body)
     if (!parsed.success) {
       return response.status(400).json({ error: 'בקשת התחברות לא תקינה.' })
@@ -70,7 +104,18 @@ export function createAuthRouter({ store }: CreateAuthRouterOptions): Router {
     if (!user || !user.isActive) {
       return response.status(401).json({ error: 'שם משתמש או סיסמה שגויים.' })
     }
-    if (!verifyPassword(parsed.data.password, user.passwordHash)) {
+    let hasValidPassword = false
+    if (user.firebaseUid) {
+      try {
+        hasValidPassword = await verifyFirebasePassword(user.username, parsed.data.password)
+      } catch {
+        hasValidPassword = verifyPassword(parsed.data.password, user.passwordHash)
+      }
+    } else {
+      hasValidPassword = verifyPassword(parsed.data.password, user.passwordHash)
+    }
+
+    if (!hasValidPassword) {
       return response.status(401).json({ error: 'שם משתמש או סיסמה שגויים.' })
     }
 

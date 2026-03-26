@@ -460,6 +460,7 @@ export class SQLiteAdminRepository implements IAdminRepository {
   createUser(input: {
     organizationId: string
     username: string
+    firebaseUid?: string
     passwordHash: string
     role: UserRole
     allowedChannelIds: string[]

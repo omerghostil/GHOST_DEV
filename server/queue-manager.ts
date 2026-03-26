@@ -23,10 +23,12 @@ interface QueueRuntimeConfig {
 
 interface VisionChatJobData {
   payload: ChatVisionRequest
+  apiKey?: string
 }
 
 interface OperationScanJobData {
   payload: OperationScanRequest
+  apiKey?: string
 }
 
 interface VisionChatJobResult {
@@ -132,6 +134,7 @@ async function processVisionChatJob(data: VisionChatJobData, signal?: AbortSigna
     requestVisionAnalysis(data.payload, optimized.dataUrl, {
       model,
       detail,
+      apiKey: data.apiKey,
       signal,
     }),
   )
@@ -147,6 +150,7 @@ async function processOperationScanJob(data: OperationScanJobData, signal?: Abor
     requestOperationScanAnalysis(data.payload, optimized.dataUrl, {
       model: executionConfig.model,
       detail: executionConfig.detail,
+      apiKey: data.apiKey,
       signal,
     }),
   )
@@ -227,21 +231,15 @@ if (queueMode === 'redis') {
  */
 export async function enqueueVisionChat(
   payload: ChatVisionRequest,
+  apiKey?: string,
   priority: JobPriority = JobPriority.CRITICAL,
 ): Promise<VisionChatJobResult> {
   if (queueMode === 'direct') {
-    return runWithRetries((signal) => processVisionChatJob({ payload }, signal))
+    return runWithRetries((signal) => processVisionChatJob({ payload, apiKey }, signal))
   }
 
   await visionChatEvents!.waitUntilReady()
-  const job = await visionChatQueue!.add(
-    'chat',
-    { payload },
-    {
-      priority,
-      timeout: runtimeConfig.timeoutMs,
-    },
-  )
+  const job = await visionChatQueue!.add('chat', { payload, apiKey }, { priority })
 
   return waitForJobResult<VisionChatJobResult>(job, visionChatEvents!)
 }
@@ -251,21 +249,15 @@ export async function enqueueVisionChat(
  */
 export async function enqueueOperationScan(
   payload: OperationScanRequest,
+  apiKey?: string,
   priority: JobPriority = JobPriority.NORMAL,
 ): Promise<OperationScanResponse> {
   if (queueMode === 'direct') {
-    return runWithRetries((signal) => processOperationScanJob({ payload }, signal))
+    return runWithRetries((signal) => processOperationScanJob({ payload, apiKey }, signal))
   }
 
   await operationScanEvents!.waitUntilReady()
-  const job = await operationScanQueue!.add(
-    'scan',
-    { payload },
-    {
-      priority,
-      timeout: runtimeConfig.timeoutMs,
-    },
-  )
+  const job = await operationScanQueue!.add('scan', { payload, apiKey }, { priority })
 
   return waitForJobResult<OperationScanResponse>(job, operationScanEvents!)
 }

@@ -1,0 +1,12 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "realtime": {
+      "$orgId": {
+        ".read": false,
+        ".write": false
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@ import type { VisionDetailLevel } from './image-optimizer'
 const OPENAI_TIMEOUT_MS = 20_000
 
 const openaiApiKey = process.env.OPENAI_API_KEY?.trim()
-const openaiClient = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null
+const defaultOpenAiClient = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null
 const INTERNAL_DISCLOSURE_KEYWORDS = [
   'איך אתה עובד',
   'איך אתה פועל',
@@ -32,11 +32,19 @@ const INTERNAL_DISCLOSURE_KEYWORDS = [
 export interface VisionRequestOptions {
   model: string
   detail: VisionDetailLevel
+  apiKey?: string
   signal?: AbortSignal
 }
 
-function throwIfOpenAiUnavailable() {
-  if (!openaiClient) {
+function resolveOpenAiClient(apiKey?: string): OpenAI | null {
+  if (apiKey?.trim()) {
+    return new OpenAI({ apiKey: apiKey.trim() })
+  }
+  return defaultOpenAiClient
+}
+
+function throwIfOpenAiUnavailable(client: OpenAI | null) {
+  if (!client) {
     throw new Error('OPENAI_API_KEY לא הוגדר בסביבה.')
   }
 }
@@ -122,7 +130,8 @@ export async function requestVisionAnalysis(
   frameDataUrl: string,
   options: VisionRequestOptions,
 ): Promise<string> {
-  throwIfOpenAiUnavailable()
+  const openaiClient = resolveOpenAiClient(options.apiKey)
+  throwIfOpenAiUnavailable(openaiClient)
   if (isInternalDisclosureAttempt(payload.prompt)) {
     return buildSecurityRefusalResponse()
   }
@@ -175,7 +184,8 @@ export async function requestOperationScanAnalysis(
   frameDataUrl: string,
   options: VisionRequestOptions,
 ): Promise<OperationScanResponse> {
-  throwIfOpenAiUnavailable()
+  const openaiClient = resolveOpenAiClient(options.apiKey)
+  throwIfOpenAiUnavailable(openaiClient)
   const membersLabel = payload.channel.members.length > 0 ? payload.channel.members.join(', ') : payload.channel.name
 
   const buildModeInstruction = (mode: OperationScanRequest['operations'][number]['mode']): string => {
@@ -260,5 +270,5 @@ export async function requestOperationScanAnalysis(
 }
 
 export function isOpenAiConfigured(): boolean {
-  return Boolean(openaiClient)
+  return Boolean(defaultOpenAiClient)
 }

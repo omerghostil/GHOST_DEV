@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "lib",
+    "rootDir": "..",
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "typeRoots": ["./node_modules/@types", "../node_modules/@types"],
+    "paths": {
+      "express-serve-static-core": ["./node_modules/@types/express-serve-static-core"]
+    }
+  },
+  "include": ["src/**/*", "../server/**/*"],
+  "exclude": [
+    "lib",
+    "../node_modules",
+    "../server/db/sqlite/**",
+    "../server/**/*.test.ts",
+    "../src/**/*"
+  ]
+}

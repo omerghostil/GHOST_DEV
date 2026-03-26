@@ -2,11 +2,11 @@ import { Router } from 'express'
 import type { IAdminRepository } from '../db/repository-types'
 import { requireAuth } from '../middleware/auth-guard'
 import { CreateIssueSchema } from '../admin/schemas'
-import type { RealtimeHub } from '../realtime/ws-hub'
+import type { IRealtimeHub } from '../realtime/realtime-hub-types'
 
 interface CreateIssuesRouterOptions {
   store: IAdminRepository
-  realtimeHub: RealtimeHub
+  realtimeHub: IRealtimeHub
 }
 
 /**
@@ -46,7 +46,7 @@ export function createIssuesRouter({ store, realtimeHub }: CreateIssuesRouterOpt
       organizationId: issue.organizationId,
       severity: issue.severity === 'critical' ? 'error' : 'warning',
       timestampIso: new Date().toISOString(),
-      payload: issue,
+      payload: issue as unknown as Record<string, unknown>,
     })
 
     return response.status(201).json(issue)

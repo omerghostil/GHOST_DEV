@@ -3,7 +3,7 @@ import App from '../App'
 import { LoginPage } from './login-page'
 import { SuperAdminPanel } from './super-admin-panel'
 import type { AuthProfile } from '../types/admin'
-import { loginRequest, meRequest } from '../services/auth-api'
+import { ghostAccessRequest, loginRequest, meRequest } from '../services/auth-api'
 import { clearAuthSession, readAuthProfile, readAuthSession, writeAuthTokens } from '../utils/auth-session'
 
 /**
@@ -42,13 +42,30 @@ export function RootApp() {
     }
   }
 
+  async function handleGhostAccess(): Promise<void> {
+    try {
+      const payload = await ghostAccessRequest()
+      writeAuthTokens(payload.accessToken, payload.refreshToken, payload.profile)
+      setProfile(payload.profile)
+      setAuthError('')
+    } catch {
+      setAuthError('כניסת ghost נכשלה.')
+    }
+  }
+
   function handleLogout() {
     clearAuthSession()
     setProfile(null)
   }
 
   if (!profile) {
-    return <LoginPage onAuthenticate={handleAuthenticate} externalErrorMessage={authError} />
+    return (
+      <LoginPage
+        onAuthenticate={handleAuthenticate}
+        onGhostAccess={handleGhostAccess}
+        externalErrorMessage={authError}
+      />
+    )
   }
 
   if (profile.role === 'super_admin') {

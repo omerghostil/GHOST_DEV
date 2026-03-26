@@ -1,18 +1,11 @@
 import type { Server as HttpServer } from 'node:http'
 import { WebSocketServer } from 'ws'
-
-interface LiveEventPayload {
-  eventType: 'usage.updated' | 'billing.threshold_exceeded' | 'issue.created' | 'issue.updated' | 'org.health.changed'
-  organizationId: string
-  severity: 'info' | 'warning' | 'error'
-  timestampIso: string
-  payload: Record<string, unknown>
-}
+import type { IRealtimeHub, LiveEventPayload } from './realtime-hub-types'
 
 /**
- * מרכז אירועים בזמן אמת לממשק סופר־אדמין.
+ * מרכז אירועים בזמן אמת דרך WebSocket לממשק סופר־אדמין (סביבת פיתוח).
  */
-export class RealtimeHub {
+export class RealtimeHub implements IRealtimeHub {
   private readonly wss: WebSocketServer
 
   constructor(server: HttpServer) {
@@ -40,4 +33,4 @@ export class RealtimeHub {
   }
 }
 
-export type { LiveEventPayload }
+export type { LiveEventPayload, IRealtimeHub }
