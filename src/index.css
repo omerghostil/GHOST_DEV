@@ -73,21 +73,22 @@
 
 html {
   direction: rtl;
-  background: var(--white);
+  background: var(--wa-shell-bg);
   color: var(--neutral-600);
-  scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
   color-scheme: light;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100svh;
-  background:
-    linear-gradient(180deg, rgba(250, 250, 250, 0.95), rgba(255, 255, 255, 0.94)),
-    var(--white);
-  overscroll-behavior-y: none;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  background: var(--wa-shell-bg);
+  overscroll-behavior: none;
 }
 
 button,
@@ -117,7 +118,11 @@ a {
 }
 
 #root {
-  min-height: 100svh;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 ::selection {

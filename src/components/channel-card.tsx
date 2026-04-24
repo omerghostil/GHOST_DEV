@@ -24,7 +24,7 @@ export function ChannelCard({ channel, isAlerting, isSelected, onSelect }: Chann
       onClick={() => onSelect(channel.id)}
       type="button"
     >
-      {channel.lastFrameDataUrl ? (
+      {channel.lastFrameDataUrl && !isGroup ? (
         <img
           className="chat-avatar chat-avatar-image"
           src={channel.lastFrameDataUrl}
@@ -48,6 +48,11 @@ export function ChannelCard({ channel, isAlerting, isSelected, onSelect }: Chann
             <StatusDot liveState={channel.liveState} className="channel-status-dot" />
             {statusMeta?.label ?? 'לא זמין'}
           </span>
+          {isGroup ? (
+            <span className="group-type-badge" title="שיחה קבוצתית">
+              קבוצה · {memberCount}
+            </span>
+          ) : null}
           {channel.unread > 0 ? <span className="unread-pill">{channel.unread}</span> : null}
         </div>
 

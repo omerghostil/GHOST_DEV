@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, TouchEvent } from 'react'
+import type { CSSProperties, FormEvent, TouchEvent } from 'react'
 import './App.css'
 import { AppFooter } from './components/app-footer'
 import { ChatPanel } from './components/chat-panel'
 import { CriticalAlertsCenter } from './components/critical-alerts-center'
 import { DetailsPanel } from './components/details-panel'
 import { FlashAlertOverlay } from './components/flash-alert-overlay'
+import { GroupNameModal } from './components/group-name-modal'
 import { InboxPanel } from './components/inbox-panel'
 import { ChannelsHub } from './components/channels-hub'
 import { Topbar } from './components/topbar'
@@ -76,6 +77,31 @@ function formatTimelineHistoryContext(analysisHistory: TimelineAnalysis[]): stri
 
 const OPERATOR_DISPLAY_NAME = 'עומר'
 const CHANNEL_ALERT_POPUP_COOLDOWN_MS = 20_000
+
+interface GhostLiveIntelLine {
+  text: string
+  top: string
+  left: string
+  cycleSec: number
+  delaySec: number
+  fontSizePx: number
+  maxWidth: string
+}
+
+const GHOSTLIVE_INTEL_LINES: GhostLiveIntelLine[] = [
+  { text: 'OPS::queue depth=0 lag=2.4s', top: '8%', left: '3%', cycleSec: 7.6, delaySec: -1.2, fontSizePx: 10, maxWidth: '28ch' },
+  { text: 'WATCH::heartbeat sensor=node-7 ok', top: '14%', left: '82%', cycleSec: 8.8, delaySec: -3.1, fontSizePx: 10, maxWidth: '32ch' },
+  { text: 'NET::latency p50=42ms p99=180ms', top: '22%', left: '6%', cycleSec: 7.1, delaySec: -2.4, fontSizePx: 11, maxWidth: '31ch' },
+  { text: 'FORENSICS::trace span=root sample=1.0', top: '28%', left: '78%', cycleSec: 8.4, delaySec: -4.6, fontSizePx: 10, maxWidth: '36ch' },
+  { text: 'HEALTH::api availability=99.97% window=24h', top: '38%', left: '4%', cycleSec: 7.9, delaySec: -1.7, fontSizePx: 10, maxWidth: '42ch' },
+  { text: 'WATCH::camera=alpha fps=24 codec=h264', top: '46%', left: '81%', cycleSec: 9.2, delaySec: -5.2, fontSizePx: 10, maxWidth: '36ch' },
+  { text: 'SCAN::zone-bravo signature=clean', top: '56%', left: '5%', cycleSec: 8.1, delaySec: -2.8, fontSizePx: 11, maxWidth: '32ch' },
+  { text: 'HEALTH::worker pool=8/8 idle=6', top: '64%', left: '79%', cycleSec: 8.7, delaySec: -6.4, fontSizePx: 10, maxWidth: '30ch' },
+  { text: 'NET::websocket peers=1 reconnect=0', top: '72%', left: '7%', cycleSec: 7.3, delaySec: -3.7, fontSizePx: 10, maxWidth: '34ch' },
+  { text: 'FORENSICS::evidence chain=verified count=12', top: '78%', left: '77%', cycleSec: 6.8, delaySec: -1.1, fontSizePx: 10, maxWidth: '42ch' },
+  { text: 'WATCH::pattern_match result=clear', top: '86%', left: '9%', cycleSec: 9.5, delaySec: -4.3, fontSizePx: 11, maxWidth: '32ch' },
+  { text: 'HEALTH::clock_drift=12ms ntp=synced', top: '92%', left: '75%', cycleSec: 7.4, delaySec: -2.2, fontSizePx: 10, maxWidth: '34ch' },
+]
 
 /**
  * בונה ניסוח אישי ודחוף להתראה קריטית על בסיס תוכן הסריקה בפועל.
@@ -159,6 +185,9 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
   const [showNewChannelForm, setShowNewChannelForm] = useState(false)
   const [isGroupingMode, setIsGroupingMode] = useState(false)
   const [groupSelectionIds, setGroupSelectionIds] = useState<string[]>([])
+  const [isGroupNameModalOpen, setIsGroupNameModalOpen] = useState(false)
+  const [pendingGroupChannelIds, setPendingGroupChannelIds] = useState<string[]>([])
+  const [groupNameDraft, setGroupNameDraft] = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [activeTopbarNav, setActiveTopbarNav] = useState<TopbarNavItem>('Ghost Live')
   const [flashAlert, setFlashAlert] = useState<{ channelName: string; operationName: string; summary: string } | null>(null)
@@ -516,7 +545,83 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
   }, [selectedChannel, nextRunAt])
 
   /**
+   * שולח בקשות ניתוח נפרדות לכל מצלמה מקושרת בקבוצה, ומחזיר הודעה נפרדת מכל אחת.
+   */
+  async function handleGroupMessageReplies(
+    groupChannel: Channel,
+    userPrompt: string,
+    frameDataUrl: string,
+    analysisContext?: string,
+  ) {
+    const linkedIds = groupChannel.linkedChannelIds || []
+    const linkedChannels = linkedIds
+      .map((id) => channels.find((ch) => ch.id === id))
+      .filter((ch): ch is Channel => ch !== undefined)
+
+    if (linkedChannels.length === 0) {
+      const reply = await requestVisionReply(groupChannel, userPrompt, frameDataUrl, analysisContext)
+      const ghostMessage: Message = {
+        id: crypto.randomUUID(),
+        author: 'ghost',
+        text: reply.text,
+        time: getCurrentTime(),
+        sources: reply.sources,
+      }
+      updateChannelById(groupChannel.id, (channel) => ({
+        ...channel,
+        messages: [...channel.messages, ghostMessage],
+      }))
+      saveMessage(groupChannel.id, ghostMessage).catch(() => undefined)
+      trackMessage(groupChannel.id, 'incoming', 'ghost')
+      return
+    }
+
+    const replyPromises = linkedChannels.map(async (linkedChannel) => {
+      try {
+        const reply = await requestVisionReply(
+          linkedChannel,
+          userPrompt,
+          frameDataUrl,
+          analysisContext,
+        )
+        return {
+          channelName: linkedChannel.name,
+          text: reply.text,
+          success: true,
+        }
+      } catch (error) {
+        return {
+          channelName: linkedChannel.name,
+          text: `שגיאה בקבלת תשובה: ${error instanceof Error ? error.message : 'שגיאה לא ידועה'}`,
+          success: false,
+        }
+      }
+    })
+
+    const replies = await Promise.all(replyPromises)
+
+    const ghostMessages: Message[] = replies.map((reply) => ({
+      id: crypto.randomUUID(),
+      author: 'ghost' as const,
+      text: reply.text,
+      time: getCurrentTime(),
+      sources: [reply.channelName],
+    }))
+
+    updateChannelById(groupChannel.id, (channel) => ({
+      ...channel,
+      messages: [...channel.messages, ...ghostMessages],
+    }))
+
+    for (const msg of ghostMessages) {
+      saveMessage(groupChannel.id, msg).catch(() => undefined)
+      trackMessage(groupChannel.id, 'incoming', 'ghost')
+    }
+  }
+
+  /**
    * שולח הודעה בערוץ, לוכד פריים עדכני, שולח לשרת לניתוח ומחזיר תשובה לצ׳אט.
+   * בקבוצה — כל מצלמה מקושרת עונה בנפרד.
    */
   async function handleMessageSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -559,22 +664,32 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
 
       const analysisHistory = selectedChannel.timelineState?.analysisHistory ?? []
       const analysisContext = analysisHistory.length > 0 ? formatTimelineHistoryContext(analysisHistory) : undefined
-      const reply = await requestVisionReply(selectedChannel, trimmedMessage, latestFrameDataUrl, analysisContext)
-      const ghostMessage: Message = {
-        id: crypto.randomUUID(),
-        author: 'ghost',
-        text: reply.text,
-        time: getCurrentTime(),
-        sources: reply.sources,
-      }
 
-      updateChannelById(selectedChannel.id, (channel) => ({
-        ...channel,
-        unread: 0,
-        messages: [...channel.messages, ghostMessage],
-      }))
-      saveMessage(selectedChannel.id, ghostMessage).catch(() => undefined)
-      trackMessage(selectedChannel.id, 'incoming', 'ghost')
+      const isGroup =
+        selectedChannel.type === 'group' &&
+        selectedChannel.linkedChannelIds &&
+        selectedChannel.linkedChannelIds.length > 0
+
+      if (isGroup) {
+        await handleGroupMessageReplies(selectedChannel, trimmedMessage, latestFrameDataUrl, analysisContext)
+      } else {
+        const reply = await requestVisionReply(selectedChannel, trimmedMessage, latestFrameDataUrl, analysisContext)
+        const ghostMessage: Message = {
+          id: crypto.randomUUID(),
+          author: 'ghost',
+          text: reply.text,
+          time: getCurrentTime(),
+          sources: reply.sources,
+        }
+
+        updateChannelById(selectedChannel.id, (channel) => ({
+          ...channel,
+          unread: 0,
+          messages: [...channel.messages, ghostMessage],
+        }))
+        saveMessage(selectedChannel.id, ghostMessage).catch(() => undefined)
+        trackMessage(selectedChannel.id, 'incoming', 'ghost')
+      }
 
       const enabledOperations = selectedChannel.operations.filter((operation) => operation.enabled)
       if (enabledOperations.length > 0) {
@@ -990,7 +1105,7 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
   }
 
   /**
-   * יוצר ערוץ קבוצתי חדש ממספר ערוצים מסומנים.
+   * מסנן ערוצים שנבחרו ופותח מודל למתן שם לקבוצה החדשה.
    */
   function createGroupFromSelection() {
     const linkedIds = [...new Set(groupSelectionIds)].filter((id) =>
@@ -1001,6 +1116,21 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
       return
     }
 
+    setPendingGroupChannelIds(linkedIds)
+    setGroupNameDraft('')
+    setIsGroupNameModalOpen(true)
+    setIsGroupingMode(false)
+  }
+
+  /**
+   * יוצר ערוץ קבוצתי חדש אחרי שהמשתמש אישר שם בפופאפ.
+   */
+  function confirmGroupCreation(groupName: string) {
+    const linkedIds = pendingGroupChannelIds
+    if (!groupName.trim() || linkedIds.length < 2) {
+      return
+    }
+
     const members = memberNamesFromLinkedChannelIds(channels, linkedIds)
     const selectedChannels = channels.filter((channel) => linkedIds.includes(channel.id))
     const combinedLocation =
@@ -1008,12 +1138,12 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
 
     const nextGroupChannel: Channel = {
       id: crypto.randomUUID(),
-      name: `קבוצה חדשה (${members.length})`,
+      name: groupName.trim(),
       type: 'group',
       subtitle: 'צ׳אט קבוצתי',
       location: combinedLocation,
       watchScope: members.join(' · ') || 'ניטור קבוצתי',
-      description: `קבוצה שנוצרה מקיבוץ מהיר של ${members.length} ערוצים.`,
+      description: `קבוצה: ${groupName.trim()}`,
       memoryInterval: 30,
       rtspFeed: 'rtsp://',
       unread: 0,
@@ -1024,7 +1154,7 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
         {
           id: crypto.randomUUID(),
           author: 'system',
-          text: `נוצרה קבוצה חדשה עם ${members.length} ערוצים: ${members.join(' · ')}.`,
+          text: `נוצרה קבוצה «${groupName.trim()}» עם ${members.length} ערוצים: ${members.join(' · ')}.`,
           time: getCurrentTime(),
         },
       ],
@@ -1035,7 +1165,8 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
     setChannels((currentChannels) => [nextGroupChannel, ...currentChannels])
     setSelectedChannelId(nextGroupChannel.id)
     setGroupSelectionIds([])
-    setIsGroupingMode(false)
+    setIsGroupNameModalOpen(false)
+    setPendingGroupChannelIds([])
     setMobilePanel('chat')
   }
 
@@ -1306,6 +1437,26 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
           onTouchEnd={handleWorkspaceTouchEnd}
           onTouchStart={handleWorkspaceTouchStart}
         >
+          <div aria-hidden className="ghostlive-terminal-bg">
+            <span className="ghostlive-terminal-glow" />
+            <span className="ghostlive-terminal-scanlines" />
+            {GHOSTLIVE_INTEL_LINES.map((line) => {
+              const style = {
+                '--line-top': line.top,
+                '--line-left': line.left,
+                '--line-cycle': `${line.cycleSec}s`,
+                '--line-delay': `${line.delaySec}s`,
+                '--line-size': `${line.fontSizePx}px`,
+                '--line-chars': line.text.length,
+                '--line-max': line.maxWidth,
+              } as CSSProperties
+              return (
+                <span key={`${line.text}_${line.top}_${line.left}`} className="ghostlive-code-blip" style={style}>
+                  <span className="ghostlive-code-typed">{line.text}</span>
+                </span>
+              )
+            })}
+          </div>
           <header className="workspace-header">
             <div>
               <p className="eyebrow">Ghost Live</p>
@@ -1493,6 +1644,22 @@ function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps
             </form>
           </div>
         </div>
+      ) : null}
+
+      {isGroupNameModalOpen ? (
+        <GroupNameModal
+          channelNames={pendingGroupChannelIds
+            .map((id) => channels.find((ch) => ch.id === id)?.name || '')
+            .filter(Boolean)}
+          value={groupNameDraft}
+          onChange={setGroupNameDraft}
+          onConfirm={() => confirmGroupCreation(groupNameDraft)}
+          onCancel={() => {
+            setIsGroupNameModalOpen(false)
+            setPendingGroupChannelIds([])
+            setGroupNameDraft('')
+          }}
+        />
       ) : null}
     </div>
   )

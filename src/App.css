@@ -1,5 +1,8 @@
 .app-shell {
+  height: 100vh;
   height: 100svh;
+  max-height: 100vh;
+  max-height: 100svh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -7,6 +10,8 @@
   padding: 0;
   position: relative;
   background: var(--wa-shell-bg);
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .app-shell::before {
@@ -25,13 +30,12 @@
 .channels-hub-screen,
 .operations-hub-screen {
   margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (min-width: 1280px) {
-  .app-shell {
-    padding: 19px 0;
-  }
-
   .app-shell .workspace,
   .app-shell .channels-hub-screen,
   .app-shell .operations-hub-screen {
@@ -350,19 +354,189 @@
    Workspace — Ghost Live
 ═══════════════════════════════ */
 
-/* Workspace — מסך ראשי בסגנון WhatsApp Web: ללא chrome, מסך מלא, 2 עמודות */
+/* Workspace — מסך ראשי בסגנון Ghost Portal: רקע כהה HUD עם glow + scanlines + intel blips */
 .workspace {
   flex: 1;
   min-height: 0;
   border: none;
   border-radius: 0;
-  background: var(--wa-sidebar-bg);
+  background:
+    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0) 40%),
+    linear-gradient(180deg, rgba(8, 8, 9, 0.98), rgba(16, 16, 18, 0.98)),
+    #09090b;
   backdrop-filter: none;
   box-shadow: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
+}
+
+/* Terminal HUD background layer — glow + scanlines + intel blips */
+.ghostlive-terminal-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  isolation: isolate;
+}
+
+.ghostlive-terminal-glow {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18) 0 12%, transparent 34%),
+    radial-gradient(circle at 80% 18%, rgba(17, 24, 39, 0.2) 0 16%, transparent 38%),
+    radial-gradient(circle at 82% 84%, rgba(255, 255, 255, 0.14) 0 14%, transparent 36%),
+    radial-gradient(circle at 20% 82%, rgba(17, 24, 39, 0.2) 0 14%, transparent 36%);
+  filter: blur(28px);
+  opacity: 0.68;
+  animation: terminal-glow-shift 22s linear infinite;
+}
+
+.ghostlive-terminal-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.05) 0 1px,
+    rgba(0, 0, 0, 0.08) 1px 3px
+  );
+  opacity: 0.7;
+}
+
+.ghostlive-code-blip {
+  --line-top: 50%;
+  --line-left: 50%;
+  --line-cycle: 8s;
+  --line-delay: 0s;
+  --line-size: 10px;
+  --line-chars: 28;
+  --line-max: 34ch;
+  position: absolute;
+  top: var(--line-top);
+  left: var(--line-left);
+  max-width: var(--line-max);
+  color: rgba(240, 244, 252, 0.92);
+  opacity: 0;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: var(--line-size);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-shadow:
+    0 0 8px rgba(255, 255, 255, 0.22),
+    0 0 20px rgba(147, 197, 253, 0.2);
+  transform: translateY(0);
+  animation: blip-presence var(--line-cycle) linear infinite;
+  animation-delay: var(--line-delay);
+}
+
+.ghostlive-code-typed {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: var(--line-max);
+  width: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.85);
+  animation:
+    type-erase var(--line-cycle) steps(34, end) infinite,
+    caret-blink 0.72s steps(1, end) infinite;
+  animation-delay: var(--line-delay), 0s;
+}
+
+@keyframes terminal-glow-shift {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate3d(-4%, -3%, 0) rotate(180deg) scale(1.05);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(360deg) scale(1);
+  }
+}
+
+@keyframes blip-presence {
+  0%,
+  7% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(1px);
+  }
+  12% {
+    opacity: 0.95;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+  42% {
+    opacity: 0.95;
+    transform: translateY(-1px);
+    filter: blur(0);
+  }
+  58% {
+    opacity: 0.82;
+    transform: translateY(-2px);
+    filter: blur(0);
+  }
+  72% {
+    opacity: 0.22;
+    transform: translateY(-4px);
+    filter: blur(0.6px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+    filter: blur(1px);
+  }
+}
+
+@keyframes type-erase {
+  0%,
+  10% {
+    width: 0;
+  }
+  36% {
+    width: min(calc(var(--line-chars) * 1ch), var(--line-max));
+  }
+  54% {
+    width: min(calc(var(--line-chars) * 1ch), var(--line-max));
+  }
+  74%,
+  100% {
+    width: 0;
+  }
+}
+
+@keyframes caret-blink {
+  0%,
+  49% {
+    border-right-color: rgba(255, 255, 255, 0.9);
+  }
+  50%,
+  100% {
+    border-right-color: rgba(255, 255, 255, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghostlive-terminal-glow,
+  .ghostlive-code-blip,
+  .ghostlive-code-typed {
+    animation: none;
+  }
+
+  .ghostlive-code-blip {
+    opacity: 0.28;
+  }
+
+  .ghostlive-code-typed {
+    width: min(calc(var(--line-chars) * 1ch), var(--line-max));
+    border-right-color: transparent;
+  }
 }
 
 /* כותרת workspace הוסתרה — הסטטיסטיקות עוברות לתוך headers של הפאנלים */
@@ -374,32 +548,41 @@
   display: none;
 }
 
-/* פריסה דו-עמודתית בסגנון WhatsApp Web */
+/* פריסה דו-עמודתית בסגנון WhatsApp Web עם z-index מעל שכבת HUD */
 .workspace-panels {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(320px, 30%) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 30%) minmax(0, 1fr);
   overflow: hidden;
-  background: var(--wa-sidebar-bg);
+  background: transparent;
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  z-index: 1;
 }
 
 .workspace .panel {
   border: none;
   border-radius: 0;
   box-shadow: none;
-  backdrop-filter: none;
+  backdrop-filter: blur(18px);
   background: transparent;
 }
 
 .workspace .inbox-panel {
-  border-inline-end: 1px solid var(--wa-divider);
-  background: var(--wa-sidebar-bg);
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(245, 245, 245, 0.06);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .workspace .chat-panel {
-  background: var(--wa-chat-bg);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  min-width: 0;
 }
 
 /* פאנל הפרטים: drawer מימין, לא קבוע בעמודה. ברירת מחדל - מוסתר. */
@@ -408,13 +591,14 @@
   inset-block: 0;
   inset-inline-start: 0;
   width: min(420px, 100%);
-  border-inline-end: 1px solid var(--wa-divider);
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.08);
   border-inline-start: none;
-  background: var(--wa-sidebar-bg);
+  background: rgba(8, 8, 9, 0.95);
+  backdrop-filter: blur(18px);
   z-index: 6;
   transform: translateX(-100%);
   transition: transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  box-shadow: 2px 0 16px rgba(11, 20, 26, 0.08);
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
 }
 
 [dir='rtl'] .workspace .details-panel,
@@ -443,8 +627,9 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 /* כותרת ה-drawer בסגנון WhatsApp — header אפור עם כפתור סגירה */
 .workspace .details-panel .dp-header {
-  background: var(--wa-header-bg);
-  border-bottom: 1px solid var(--wa-divider);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -456,22 +641,24 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   border: none;
   border-radius: 999px;
   padding: 6px 12px;
-  color: var(--wa-icon);
+  color: rgba(240, 244, 252, 0.7);
   font-size: 13px;
   transition: background 150ms ease, color 150ms ease;
 }
 
 .workspace .details-panel .dp-header-actions .ghost-button:hover {
-  background: rgba(11, 20, 26, 0.06);
-  color: var(--neutral-950);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(240, 244, 252, 0.95);
 }
 
 .workspace .panel-header {
-  background: var(--wa-header-bg);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
 }
 
 .workspace .chat-header {
-  background: var(--wa-header-bg);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
 }
 
 /* Backdrop מאחורי ה-drawer */
@@ -491,11 +678,11 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .operations-hub-screen {
   flex: 1;
   min-height: 0;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(8, 8, 9, 0.6);
   backdrop-filter: blur(18px);
-  box-shadow: var(--soft-shadow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -503,18 +690,20 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 .operations-hub-header {
   padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-3);
+  background: rgba(8, 8, 9, 0.8);
+  backdrop-filter: blur(18px);
 }
 
 .operations-hub-stats {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--neutral-500);
+  color: rgba(240, 244, 252, 0.6);
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -662,19 +851,20 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .channels-hub-header {
   flex-shrink: 0;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--wa-divider);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: var(--wa-header-bg);
+  background: rgba(8, 8, 9, 0.8);
+  backdrop-filter: blur(18px);
   min-height: 49px;
 }
 
 .channels-hub-header h2 {
   font-size: 16px;
   font-weight: 600;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   margin: 0;
   line-height: 1.3;
 }
@@ -1081,8 +1271,9 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .dp-header {
   flex-shrink: 0;
   padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.65);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
 }
 
 .dp-header-top {
@@ -1099,7 +1290,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--neutral-400);
+  color: rgba(240, 244, 252, 0.5);
   line-height: 1;
 }
 
@@ -1118,7 +1309,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   line-height: var(--line-height-tight);
 }
 
@@ -1129,31 +1320,32 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   margin-top: 8px;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid var(--neutral-200);
-  background: var(--neutral-50);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
   font-size: 11px;
   line-height: 1;
 }
 
 .dp-status-state {
   font-weight: 700;
-  color: var(--neutral-700);
+  color: rgba(240, 244, 252, 0.85);
   letter-spacing: 0.04em;
 }
 
 .dp-status-divider {
-  color: var(--neutral-300);
+  color: rgba(240, 244, 252, 0.3);
 }
 
 .dp-status-label {
-  color: var(--neutral-500);
+  color: rgba(240, 244, 252, 0.6);
 }
 
 /* ── Sections ── */
 
 .dp-section {
   padding: var(--space-4);
-  border-bottom: 1px solid rgba(10, 10, 10, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .dp-section:last-child {
@@ -1172,7 +1364,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   line-height: var(--line-height-tight);
 }
 
@@ -1181,11 +1373,12 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--neutral-500);
+  color: rgba(240, 244, 252, 0.7);
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--neutral-200);
-  background: var(--neutral-50);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
   line-height: 1.4;
 }
 
@@ -1236,7 +1429,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   flex-direction: column;
   gap: 2px;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(10, 10, 10, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .dp-field:last-child {
@@ -1253,14 +1446,14 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--neutral-400);
+  color: rgba(240, 244, 252, 0.5);
   line-height: 1;
 }
 
 .dp-field dd {
   margin: 0;
   font-size: 13px;
-  color: var(--neutral-800);
+  color: rgba(240, 244, 252, 0.85);
   line-height: var(--line-height-tight);
 }
 
@@ -1268,7 +1461,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
   word-break: break-all;
-  color: var(--neutral-600);
+  color: rgba(240, 244, 252, 0.7);
 }
 
 /* ── Tags ── */
@@ -1282,13 +1475,14 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 .dp-tag {
   border-radius: 999px;
-  border: 1px solid var(--neutral-200);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 2px 10px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--neutral-500);
-  background: var(--neutral-50);
+  color: rgba(240, 244, 252, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
 }
 
 /* ── Empty ── */
@@ -1309,16 +1503,17 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 }
 
 .dp-op-card {
-  border: 1px solid var(--neutral-200);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
   padding: var(--space-3);
-  background: var(--white);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
   transition: border-color 150ms ease, opacity 150ms ease;
 }
 
 .dp-op-paused {
   opacity: 0.65;
-  background: var(--neutral-50);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .dp-op-paused:hover {
@@ -1348,12 +1543,12 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 }
 
 .dp-op-indicator.on {
-  background: var(--neutral-950);
-  box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.08);
+  background: rgba(240, 244, 252, 0.9);
+  box-shadow: 0 0 0 3px rgba(240, 244, 252, 0.15);
 }
 
 .dp-op-indicator.off {
-  background: var(--neutral-300);
+  background: rgba(240, 244, 252, 0.3);
 }
 
 .dp-op-name-wrap {
@@ -1366,7 +1561,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .dp-op-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--neutral-800);
+  color: rgba(240, 244, 252, 0.9);
   line-height: var(--line-height-tight);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1378,12 +1573,12 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--neutral-400);
+  color: rgba(240, 244, 252, 0.5);
   line-height: 1;
 }
 
 .dp-op-active .dp-op-state-label {
-  color: var(--neutral-600);
+  color: rgba(240, 244, 252, 0.7);
 }
 
 /* ── Operation meta ── */
@@ -1394,7 +1589,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   grid-template-columns: 1fr 1fr;
   gap: 6px var(--space-3);
   padding-top: var(--space-2);
-  border-top: 1px solid var(--neutral-100);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .dp-op-meta-row {
@@ -1412,14 +1607,14 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--neutral-400);
+  color: rgba(240, 244, 252, 0.5);
   line-height: 1;
 }
 
 .dp-op-meta dd {
   margin: 0;
   font-size: 12px;
-  color: var(--neutral-600);
+  color: rgba(240, 244, 252, 0.75);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1447,12 +1642,13 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .panel-header,
 .chat-header {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--wa-divider);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   gap: 0;
   flex-shrink: 0;
-  background: var(--wa-header-bg);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
   min-height: 49px;
   justify-content: center;
 }
@@ -1464,7 +1660,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-size: 16px;
   line-height: var(--line-height-tight);
   font-weight: 600;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
 }
 
 .eyebrow,
@@ -1472,7 +1668,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .timestamp,
 .section-heading span {
   margin: 0;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: none;
@@ -1490,7 +1686,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .chip-button,
 .bottom-nav button {
   appearance: none;
-  border: 1px solid var(--wa-divider);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   padding: 7px 14px;
   font: inherit;
@@ -1508,28 +1704,29 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .ghost-button,
 .chip-button,
 .bottom-nav button {
-  background: var(--white);
-  color: var(--wa-icon);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  color: rgba(240, 244, 252, 0.8);
 }
 
 .primary-button {
-  background: var(--neutral-950);
-  color: var(--white);
-  border-color: var(--neutral-950);
+  background: rgba(245, 245, 245, 0.92);
+  color: var(--neutral-950);
+  border-color: rgba(255, 255, 255, 0.2);
   font-weight: 600;
 }
 
 .ghost-button:hover,
 .chip-button:hover,
 .bottom-nav button:hover {
-  background: var(--wa-row-selected);
-  color: var(--neutral-950);
-  border-color: var(--neutral-300);
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(240, 244, 252, 0.98);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .primary-button:hover {
-  background: var(--neutral-800);
-  border-color: var(--neutral-800);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .primary-button:disabled {
@@ -1546,13 +1743,16 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 }
 
 .chat-list {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
 }
 
 .inbox-panel {
@@ -1565,10 +1765,15 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   gap: 0;
   padding-inline-start: 12px;
   border-bottom: 1px solid transparent;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chat-list-entry .chat-list-item {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .chat-list-group-toggle {
@@ -1592,29 +1797,42 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   gap: var(--space-2);
 }
 
+.inbox-header-actions .ghost-button {
+  color: rgba(240, 244, 252, 0.8);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.inbox-header-actions .ghost-button:hover {
+  color: rgba(240, 244, 252, 0.98);
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .inbox-grouping-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   margin: 8px 12px;
   padding: 12px;
-  background: var(--wa-row-selected);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
   border-radius: 8px;
-  border: 1px solid var(--wa-divider);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .inbox-grouping-hint {
   margin: 0;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.7);
   font-size: 12px;
 }
 
-/* Override inbox-panel header — sidebar header WhatsApp-style */
+/* Override inbox-panel header — sidebar header בסגנון כהה */
 .inbox-panel .panel-header {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  background: var(--wa-header-bg);
+  background: rgba(8, 8, 9, 0.8);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding: 8px 12px;
   min-height: 49px;
 }
@@ -1623,6 +1841,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   font-size: 16px;
   font-weight: 600;
   margin: 0;
+  color: rgba(240, 244, 252, 0.95);
 }
 
 .inbox-panel .panel-header .eyebrow {
@@ -1704,6 +1923,65 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   gap: var(--space-2);
 }
 
+/* ─── Group Name Modal ─── */
+.group-name-modal {
+  width: min(460px, 100%);
+}
+
+.group-name-members-list {
+  display: grid;
+  gap: 6px;
+}
+
+.group-name-members-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--neutral-500);
+  font-weight: 500;
+}
+
+.group-name-members-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.group-name-member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(91, 141, 239, 0.10);
+  border: 1px solid rgba(91, 141, 239, 0.25);
+  color: #3b6fd9;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.group-name-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--neutral-300);
+  background: var(--white);
+  color: var(--neutral-950);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.group-name-input:focus {
+  border-color: #5b8def;
+  box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.12);
+}
+
+.group-name-input::placeholder {
+  color: var(--neutral-400);
+}
+
 .alerts-center-overlay {
   z-index: 140;
 }
@@ -1711,10 +1989,11 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .alerts-center {
   width: min(960px, 100%);
   max-height: min(86svh, 920px);
-  border: 1px solid var(--neutral-300);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--white), var(--neutral-50));
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+  background: rgba(8, 8, 9, 0.95);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1722,26 +2001,27 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 .alerts-center-header {
   padding: var(--space-4);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--space-3);
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(8, 8, 9, 0.8);
+  backdrop-filter: blur(18px);
 }
 
 .alerts-center-header h3 {
   margin: var(--space-1) 0 0;
   font-size: 21px;
   line-height: 1.2;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
 }
 
 .alerts-center-stats {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
-  color: var(--neutral-500);
+  color: rgba(240, 244, 252, 0.6);
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1763,13 +2043,14 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 .alerts-center-empty p {
   margin: 0;
-  color: var(--neutral-600);
+  color: rgba(240, 244, 252, 0.7);
 }
 
 .alerts-center-item {
-  border: 1px solid var(--neutral-300);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
-  background: var(--white);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
@@ -1921,19 +2202,19 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   inset-inline-start: 64px;
   inset-inline-end: 0;
   height: 1px;
-  background: var(--wa-divider);
+  background: rgba(255, 255, 255, 0.06);
   opacity: 0.55;
   pointer-events: none;
 }
 
 .chat-list-item:hover {
   border: none;
-  background: var(--wa-row-hover);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .chat-list-item.selected {
   border: none;
-  background: var(--wa-row-selected);
+  background: rgba(255, 255, 255, 0.12);
   transform: none;
 }
 
@@ -1981,8 +2262,8 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   width: 49px;
   height: 49px;
   border-radius: 50%;
-  background: var(--neutral-950);
-  color: var(--white);
+  background: rgba(245, 245, 245, 0.9);
+  color: var(--neutral-950);
   font-weight: 600;
   font-size: 16px;
 }
@@ -1993,18 +2274,41 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   border-radius: 50%;
 }
 
-/* avatar קבוצה — צבע רקע מעט שונה לזיהוי מיידי */
+/* avatar קבוצה — עיצוב ייחודי בולט (gradient + grid 2x2 לזיהוי מיידי של קבוצה) */
 .chat-avatar-group {
-  background: var(--neutral-800);
-  font-size: 14px;
+  background: linear-gradient(135deg, #5b8def 0%, #3b6fd9 50%, #2952b3 100%);
+  color: var(--white);
+  font-size: 15px;
+  font-weight: 700;
   letter-spacing: -0.02em;
-  border: none;
+  border: 2px solid rgba(91, 141, 239, 0.3);
+  box-shadow: 0 2px 6px rgba(91, 141, 239, 0.35);
+  position: relative;
+}
+
+/* badge קטן עם אייקון "קבוצה" בפינת ה-avatar */
+.chat-avatar-group::after {
+  content: '◈';
+  position: absolute;
+  inset-block-end: -2px;
+  inset-inline-end: -2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #5b8def;
+  color: var(--white);
+  font-size: 10px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(8, 8, 9, 0.95);
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* שורת שמות חברי הקבוצה */
 .channel-members-preview {
   margin: 0;
-  color: var(--neutral-400);
+  color: rgba(240, 244, 252, 0.5);
   font-size: 11px;
   letter-spacing: 0.02em;
   line-height: var(--line-height-tight);
@@ -2014,14 +2318,61 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   overflow: hidden;
 }
 
-/* כרטיס קבוצה — נשמר בלי border רעשני */
+/* כרטיס קבוצה — הפרדה ויזואלית בולטת מערוצים אישיים */
 .chat-list-item-group {
-  border-inline-start: none;
+  border-inline-start: 3px solid #5b8def;
+  background: linear-gradient(
+    270deg,
+    rgba(91, 141, 239, 0.08) 0%,
+    rgba(91, 141, 239, 0.03) 60%,
+    transparent 100%
+  );
 }
 
-.chat-list-item-group.selected,
+.chat-list-item-group:hover {
+  background: linear-gradient(
+    270deg,
+    rgba(91, 141, 239, 0.14) 0%,
+    rgba(91, 141, 239, 0.07) 60%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+}
+
+.chat-list-item-group.selected {
+  background: linear-gradient(
+    270deg,
+    rgba(91, 141, 239, 0.20) 0%,
+    rgba(91, 141, 239, 0.12) 60%,
+    rgba(255, 255, 255, 0.10) 100%
+  );
+  border-inline-start-color: #7da6f5;
+}
+
 .chat-list-item-group.channel-alerting {
-  border-inline-start: none;
+  border-inline-start-color: #B91C1C;
+}
+
+/* badge "קבוצה · N" בשורת ה-meta של הקבוצה */
+.group-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(91, 141, 239, 0.18);
+  border: 1px solid rgba(91, 141, 239, 0.35);
+  color: #a8c4f5;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.group-type-badge::before {
+  content: '◈';
+  font-size: 9px;
+  color: #5b8def;
 }
 
 .chat-list-copy {
@@ -2041,7 +2392,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 }
 
 .chat-list-row strong {
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   font-size: 16px;
   line-height: 1.3;
   font-weight: 500;
@@ -2054,7 +2405,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 /* timestamp בכרטיס שיחה — קטן ואפור בצד */
 .chat-list-row .timestamp {
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.5);
   font-size: 12px;
   letter-spacing: 0;
   text-transform: none;
@@ -2067,7 +2418,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 }
 
 .chat-list-row.secondary span {
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.5);
   font-size: 12px;
   letter-spacing: 0;
   text-transform: none;
@@ -2079,7 +2430,7 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 
 .chat-list-copy p {
   margin: 0;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
   font-size: 14px;
   line-height: 1.4;
   display: -webkit-box;
@@ -2093,8 +2444,8 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
   height: 20px;
   padding-inline: 6px;
   border-radius: 999px;
-  background: var(--wa-unread-bg);
-  color: var(--white);
+  background: rgba(245, 245, 245, 0.9);
+  color: var(--neutral-950);
   font-size: 11px;
   font-weight: 600;
   display: inline-grid;
@@ -2103,9 +2454,10 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 }
 
 .card {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
-  background: var(--neutral-50);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
 }
 
 .card {
@@ -2210,11 +2562,13 @@ html[dir='rtl'] .workspace .details-panel.drawer-closed {
 .channel-members {
   display: grid;
   gap: var(--space-2);
-  color: var(--neutral-600);
+  color: rgba(240, 244, 252, 0.8);
   font-size: 13px;
   line-height: var(--line-height-tight);
 }
 
+/* Global default — light-surface inputs (login, command center, super admin, operations hub).
+   Dark-surface inputs (workspace inbox/chat composer) override these via more specific selectors. */
 input,
 textarea,
 select {
@@ -2233,12 +2587,50 @@ select {
     background 0.15s ease;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: var(--neutral-400);
+  opacity: 1;
+}
+
 input:focus,
 textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--neutral-500);
   box-shadow: 0 0 0 4px rgba(10, 10, 10, 0.08);
+  background: var(--white);
+}
+
+/* Inputs/textareas inside the dark workspace stacked forms keep the glass HUD style.
+   (Specific composer/search/etc. inputs already have their own complete styles above.) */
+.workspace .stacked-form input,
+.workspace .stacked-form textarea,
+.workspace .stacked-form select,
+.workspace .channel-members input,
+.workspace .channel-members textarea,
+.workspace .channel-members select {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(240, 244, 252, 0.95);
+}
+
+.workspace .stacked-form input::placeholder,
+.workspace .stacked-form textarea::placeholder,
+.workspace .channel-members input::placeholder,
+.workspace .channel-members textarea::placeholder {
+  color: rgba(240, 244, 252, 0.4);
+}
+
+.workspace .stacked-form input:focus,
+.workspace .stacked-form textarea:focus,
+.workspace .stacked-form select:focus,
+.workspace .channel-members input:focus,
+.workspace .channel-members textarea:focus,
+.workspace .channel-members select:focus {
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 textarea {
@@ -2290,7 +2682,7 @@ textarea {
 }
 
 .title-cluster:hover {
-  background: rgba(11, 20, 26, 0.05);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .title-cluster-text {
@@ -2302,7 +2694,7 @@ textarea {
 
 .title-cluster-text .route {
   font-size: 12.5px;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
   margin: 0;
 }
 
@@ -2312,8 +2704,8 @@ textarea {
   height: 40px;
   padding-inline: 0;
   border-radius: 50%;
-  background: var(--neutral-950);
-  color: var(--white);
+  background: rgba(245, 245, 245, 0.9);
+  color: var(--neutral-950);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0;
@@ -2335,7 +2727,7 @@ textarea {
 .live-status {
   align-items: center;
   gap: 6px;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
   font-size: 13px;
   letter-spacing: 0;
   text-transform: none;
@@ -2344,27 +2736,35 @@ textarea {
   font-weight: 400;
 }
 
-/* Chat header — WhatsApp style: שורת מידע אופקית קומפקטית */
+/* Chat header — סגנון כהה עם glass effect */
 .chat-panel .chat-header {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  background: var(--wa-header-bg);
-  padding: 8px 16px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(8, 8, 9, 0.85);
+  backdrop-filter: blur(18px);
+  padding: 10px 16px;
   min-height: 59px;
-  border-bottom: 1px solid var(--wa-divider);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+}
+
+.chat-panel .chat-header .chat-title-block {
+  flex: 1;
+  min-width: 0;
 }
 
 .chat-panel .chat-header .title-cluster .route {
   display: block;
   font-size: 12.5px;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
 }
 
 .chat-panel .chat-header h2 {
   font-size: 16px;
   font-weight: 500;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   letter-spacing: -0.01em;
   margin: 0;
   line-height: 1.3;
@@ -2375,57 +2775,105 @@ textarea {
   display: none;
 }
 
-/* Timeline controls — שורה קומפקטית בלתי מודגשת */
+/* Timeline controls — שורה קומפקטית בלתי מודגשת בסרגל צדדי של הכותרת */
 .chat-panel .chat-header .timeline-controls {
-  margin-top: 4px;
-  border-top: 1px solid var(--wa-divider);
-  padding-top: 6px;
+  margin: 0;
+  border-top: none;
+  padding: 0;
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
   font-size: 11px;
+  color: rgba(240, 244, 252, 0.6);
+  justify-self: end;
+  flex-shrink: 0;
 }
 
 .chat-panel .chat-header .timeline-controls .timeline-controls-header {
-  flex-shrink: 0;
+  display: none;
 }
 
 .chat-panel .chat-header .timeline-controls .timeline-progress-track {
   display: none;
 }
 
+.chat-panel .chat-header .timeline-controls .timeline-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.chat-panel .chat-header .timeline-controls .timeline-progress-label {
+  font-size: 11px;
+  color: rgba(240, 244, 252, 0.6);
+  white-space: nowrap;
+}
+
+.chat-panel .chat-header .timeline-controls .timeline-interval-buttons {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.chat-panel .chat-header .timeline-controls .chip-button {
+  padding: 3px 9px;
+  font-size: 11px;
+  line-height: 1.3;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+  color: rgba(240, 244, 252, 0.7);
+  min-height: 0;
+}
+
+.chat-panel .chat-header .timeline-controls .chip-button:hover {
+  color: rgba(240, 244, 252, 0.95);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.chat-panel .chat-header .timeline-controls .ghost-button {
+  padding: 3px 10px;
+  font-size: 11px;
+  height: 24px;
+  min-height: 0;
+  border-radius: 999px;
+}
+
 .inbox-search-bar {
   padding: 7px 12px 7px 12px;
-  background: var(--wa-sidebar-bg);
-  border-bottom: 1px solid var(--wa-divider);
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
 }
 
 .inbox-search-input {
   width: 100%;
   padding: 7px 14px 7px 36px;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  background: var(--wa-row-selected);
-  color: var(--neutral-950);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(240, 244, 252, 0.95);
   font-size: 14px;
   line-height: 1.4;
   height: 35px;
   box-sizing: border-box;
-  transition: background 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease;
 }
 
 .inbox-search-input:focus {
-  background: var(--white);
-  border: 1px solid var(--wa-divider);
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
   outline: none;
 }
 
 .inbox-search-input::placeholder {
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.4);
 }
 
 .load-more-button {
@@ -2444,43 +2892,57 @@ textarea {
   padding: 4px 12px;
   font-size: 11.5px;
   line-height: var(--line-height-tight);
-  color: var(--wa-meta-text);
-  border: 1px solid var(--wa-divider);
-  background: var(--white);
+  color: rgba(240, 244, 252, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
   border-radius: 999px;
   transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
 }
 
 .composer-suggestions .chip-button:hover {
-  color: var(--neutral-950);
-  border-color: var(--neutral-300);
-  background: var(--wa-row-selected);
+  color: rgba(240, 244, 252, 0.95);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.12);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   Message Stream — Ghost Design System
+   רקע נקי neutral-50 (ללא wallpaper רעשני), קלפי הודעה ניטרליים,
+   דגש ברונזה/זית עדין, ללא זנבות משולשים אגרסיביים.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   MESSAGE STREAM — WhatsApp Web style + Ghost brand polish
+   - Wallpaper background (לא לבן יבש)
+   - Bubble עם פינה אסימטרית + tail מעוגל קטן בצד "מהיכן הוא בא"
+   - Timestamp inline בתוך הבועה למטה — לא תופס שורה משלו
+   - אזור גלילה יחיד; כל השאר לוקיד
+   ═══════════════════════════════════════════════════════════════ */
+
 .message-stream {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  padding: 16px 8% 90px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 16px clamp(20px, 5%, 64px) 96px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  scroll-padding-bottom: 90px;
-  background-color: var(--wa-chat-bg);
-  background-image:
-    radial-gradient(circle at 25% 25%, rgba(11, 20, 26, 0.05) 1.5px, transparent 1.5px),
-    radial-gradient(circle at 75% 75%, rgba(11, 20, 26, 0.04) 1.2px, transparent 1.2px);
-  background-size: 60px 60px, 90px 90px;
-  background-position: 0 0, 30px 30px;
+  scroll-padding-bottom: 110px;
+  background-color: transparent;
+  background-image: none;
 }
 
 .message-row {
   display: flex;
   gap: 0;
   align-items: flex-start;
-  max-width: min(65%, 580px);
-  animation: message-slide-in 140ms ease-out;
-  margin-block: 1px;
+  max-width: min(65%, 620px);
+  animation: message-slide-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  margin: 2px 0;
+  position: relative;
 }
 
 @keyframes message-slide-in {
@@ -2496,189 +2958,229 @@ textarea {
   align-items: flex-end;
 }
 
+.message-row.ghost {
+  align-self: flex-start;
+}
+
 .message-row.system {
-  max-width: min(80%, 520px);
+  max-width: min(72%, 520px);
   align-self: center;
 }
 
-/* WhatsApp לא מציג avatar בכל הודעה — מסתירים בכל הסוגים */
-.message-avatar {
-  display: none;
-}
-
-.message-avatar-ghost-logo {
-  display: none;
+/* Ghost לא מציג avatar בשום הודעה — מינימליסטי, WhatsApp-style */
+.message-avatar,
+.message-avatar-ghost-logo,
+.message-row .message-avatar,
+.message-row .message-avatar-ghost-logo {
+  display: none !important;
 }
 
 .message-body {
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
   flex: 1;
+  align-items: flex-start;
 }
 
+/* ─── Bubble — קלף עם פינה אסימטרית + tail (WhatsApp + Ghost neutrals) ─── */
 .message-bubble {
-  border-radius: 7.5px;
-  padding: 6px 9px 8px;
-  border: none;
-  background: var(--wa-bubble-in);
-  color: var(--wa-bubble-in-text);
-  line-height: 1.4;
+  border-radius: 12px;
+  padding: 7px 12px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  color: rgba(240, 244, 252, 0.95);
+  line-height: 1.45;
   font-size: 14.2px;
-  box-shadow: var(--wa-frame-shadow);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   position: relative;
   word-wrap: break-word;
   max-width: 100%;
+  display: inline-block;
 }
 
 .message-bubble p {
   margin: 0;
   white-space: pre-wrap;
+  color: inherit;
+  padding-inline-end: 56px;
 }
 
-/* זנב הבועה — נקודה משולשת קטנה כמו WhatsApp. RTL: בועות "ghost" מימין, "user" משמאל */
-.message-row.ghost .message-bubble::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  inset-inline-start: -8px;
-  width: 8px;
-  height: 13px;
-  background: var(--wa-bubble-in);
-  clip-path: polygon(100% 0, 0 0, 100% 100%);
+.message-bubble p:empty {
+  display: none;
 }
 
+/* ─── הודעת משתמש (יוצאת) — קלף כהה עם זכוכית ─── */
 .message-row.user .message-bubble {
-  background: var(--wa-bubble-out);
-  color: var(--wa-bubble-out-text);
-  border-color: transparent;
-  box-shadow: var(--wa-frame-shadow);
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(12px);
+  color: rgba(240, 244, 252, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  border-start-end-radius: 4px;
 }
 
+/* tail עדין בצד הקרוב (ב-RTL: top-right של בועה שנמצאת בשמאל) */
 .message-row.user .message-bubble::before {
   content: '';
   position: absolute;
-  top: 0;
-  inset-inline-end: -8px;
+  inset-block-start: 0;
+  inset-inline-end: -7px;
   width: 8px;
   height: 13px;
-  background: var(--wa-bubble-out);
-  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background: rgba(255, 255, 255, 0.14);
+  clip-path: polygon(0 0, 0% 100%, 100% 0);
 }
 
+/* ─── הודעת ghost/AI — קלף זכוכית עם accent ברונזה עדין ─── */
 .message-row.ghost .message-bubble {
-  background: var(--wa-bubble-in);
-  color: var(--wa-bubble-in-text);
-  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  color: rgba(240, 244, 252, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  border-start-start-radius: 4px;
+  border-inline-start: 2px solid rgba(139, 115, 85, 0.7);
+  padding-inline-start: 10px;
 }
 
+.message-row.ghost .message-bubble::before {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: -7px;
+  width: 8px;
+  height: 13px;
+  background: rgba(255, 255, 255, 0.08);
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+/* ─── הודעת system — קלף זכוכית, ממורכז ─── */
 .message-row.system .message-bubble {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--wa-divider);
-  color: var(--neutral-700);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(240, 244, 252, 0.85);
   font-size: 13px;
-  box-shadow: var(--wa-frame-shadow);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 6px 12px 16px;
 }
 
-/* סריקות critical — דגש אדום עדין שמתאים גם ל-WhatsApp aesthetic */
+.message-row.system .message-bubble::before {
+  display: none;
+}
+
+/* Critical alert — דגש אדום עמוק */
 .message-row.system.alert-critical .message-bubble {
-  background: #fff5f5;
-  border-color: rgba(185, 28, 28, 0.25);
-  border-inline-start: 3px solid #B91C1C;
-  box-shadow: 0 1px 2px rgba(185, 28, 28, 0.08);
+  background: rgba(220, 38, 38, 0.15);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-inline-start: 3px solid #DC2626;
+  color: rgba(255, 240, 240, 0.98);
+  border-radius: 8px;
+  border-start-start-radius: 4px;
+  padding-inline-start: 12px;
 }
 
+/* Routine — ניטרלי שקט */
 .message-row.system.alert-routine .message-bubble {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: var(--wa-divider);
-  border-inline-start: 3px solid var(--neutral-300);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-inline-start: 3px solid rgba(255, 255, 255, 0.3);
+  color: rgba(240, 244, 252, 0.8);
+  border-radius: 8px;
+  border-start-start-radius: 4px;
+  padding-inline-start: 12px;
 }
 
-/* --- Scan label (eyebrow above scan messages) --- */
+/* --- Scan label (eyebrow above scan messages) — Ghost badge pattern (compact, ניטרלי) --- */
 
 .message-scan-label {
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   line-height: 1;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px 8px;
+  border-radius: 6px;
   width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.message-row.user .message-scan-label {
+  align-self: flex-end;
 }
 
 .scan-label-critical {
-  color: #B91C1C;
-  background: rgba(185, 28, 28, 0.04);
-  border: 1px solid rgba(185, 28, 28, 0.15);
+  color: #ff6b6b;
+  background: rgba(220, 38, 38, 0.2);
+  border: 1px solid rgba(220, 38, 38, 0.35);
 }
 
 .scan-label-routine {
-  color: var(--neutral-500);
-  background: var(--neutral-50);
-  border: 1px solid var(--neutral-200);
+  color: rgba(240, 244, 252, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* Report — גוון זית-צבאי, חלק מפלטת Ghost */
 .scan-label-report {
-  color: #1D4ED8;
-  background: rgba(29, 78, 216, 0.04);
-  border: 1px solid rgba(29, 78, 216, 0.15);
+  color: #a8c896;
+  background: rgba(122, 139, 109, 0.2);
+  border: 1px solid rgba(122, 139, 109, 0.35);
 }
 
+/* Rating — גוון ברונזה, חלק מפלטת Ghost */
 .scan-label-rating {
-  color: #B45309;
-  background: rgba(180, 83, 9, 0.04);
-  border: 1px solid rgba(180, 83, 9, 0.15);
+  color: #c9a882;
+  background: rgba(139, 115, 85, 0.2);
+  border: 1px solid rgba(139, 115, 85, 0.35);
 }
 
+/* Assessment — ברונזה כהה */
 .scan-label-assessment {
-  color: #6D28D9;
-  background: rgba(109, 40, 217, 0.04);
-  border: 1px solid rgba(109, 40, 217, 0.15);
+  color: #b89968;
+  background: rgba(112, 94, 70, 0.2);
+  border: 1px solid rgba(112, 94, 70, 0.35);
 }
 
 /* --- Report mode message --- */
 
-.message-row.system.alert-report .message-avatar {
-  background: var(--white);
-  color: #1D4ED8;
-  border: 1px solid rgba(29, 78, 216, 0.3);
-}
-
 .message-row.system.alert-report .message-bubble {
-  background: var(--white);
-  border-color: rgba(29, 78, 216, 0.12);
-  border-inline-start: 3px solid #1D4ED8;
+  background: rgba(122, 139, 109, 0.12);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(122, 139, 109, 0.25);
+  border-inline-start: 3px solid var(--olive-mil, #7A8B6D);
+  color: rgba(240, 244, 252, 0.9);
 }
 
 /* --- Rating mode message --- */
 
-.message-row.system.alert-rating .message-avatar {
-  background: var(--white);
-  color: #B45309;
-  border: 1px solid rgba(180, 83, 9, 0.3);
-}
-
 .message-row.system.alert-rating .message-bubble {
-  background: var(--white);
-  border-color: rgba(180, 83, 9, 0.12);
-  border-inline-start: 3px solid #B45309;
+  background: rgba(139, 115, 85, 0.12);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(139, 115, 85, 0.25);
+  border-inline-start: 3px solid var(--bronze, #8B7355);
+  color: rgba(240, 244, 252, 0.9);
 }
 
 /* --- Assessment mode message --- */
 
-.message-row.system.alert-assessment .message-avatar {
-  background: var(--white);
-  color: #6D28D9;
-  border: 1px solid rgba(109, 40, 217, 0.3);
-}
-
 .message-row.system.alert-assessment .message-bubble {
-  background: var(--white);
-  border-color: rgba(109, 40, 217, 0.12);
-  border-inline-start: 3px solid #6D28D9;
+  background: rgba(112, 94, 70, 0.12);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(112, 94, 70, 0.25);
+  border-inline-start: 3px solid var(--bronze-dark, #705E46);
+  color: rgba(240, 244, 252, 0.9);
 }
 
 /* --- Frame thumbnail (persistent until dismissed) --- */
@@ -2754,9 +3256,10 @@ textarea {
 .alert-flash-card {
   width: min(480px, 100%);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--neutral-300);
-  border-top: 3px solid #B91C1C;
-  background: linear-gradient(180deg, var(--white), var(--neutral-50));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 3px solid #ef4444;
+  background: rgba(8, 8, 9, 0.95);
+  backdrop-filter: blur(24px);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
   padding: 20px 24px 16px;
   display: grid;
@@ -2800,7 +3303,7 @@ textarea {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   line-height: 1.2;
 }
 
@@ -2818,22 +3321,22 @@ textarea {
 }
 
 .alert-flash-detail-row dt {
-  color: var(--neutral-500);
+  color: rgba(240, 244, 252, 0.6);
   min-width: 48px;
   font-weight: 600;
 }
 
 .alert-flash-detail-row dd {
   margin: 0;
-  color: var(--neutral-800);
+  color: rgba(240, 244, 252, 0.85);
 }
 
 .alert-flash-summary {
   margin: 0;
   font-size: var(--font-body);
   line-height: var(--line-height-body);
-  color: var(--neutral-600);
-  border-top: 1px solid var(--border);
+  color: rgba(240, 244, 252, 0.7);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: var(--space-3);
 }
 
@@ -2868,11 +3371,11 @@ textarea {
   to   { width: 0%; }
 }
 
-/* --- Timeline controls — קומפקטי בכותרת בסגנון WhatsApp --- */
+/* --- Timeline controls — קומפקטי בכותרת בסגנון כהה --- */
 
 .timeline-controls {
   margin-top: 6px;
-  border-top: 1px solid var(--wa-divider);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 6px;
   display: flex;
   flex-direction: row;
@@ -2886,24 +3389,24 @@ textarea {
   align-items: center;
   gap: 6px;
   font-size: 11.5px;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
 }
 
 .timeline-controls-header strong {
   font-weight: 500;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.7);
 }
 
 .timeline-state-dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--neutral-300);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .timeline-state-dot.active {
   background: #ef4444;
-  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14);
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
 }
 
 .timeline-controls-row {
@@ -2916,7 +3419,7 @@ textarea {
 .timeline-progress-label,
 .timeline-interval-label {
   font-size: 11px;
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.6);
   letter-spacing: 0;
 }
 
@@ -2929,20 +3432,21 @@ textarea {
 .timeline-interval-buttons .chip-button {
   padding: 3px 10px;
   font-size: 11px;
-  background: var(--white);
-  border: 1px solid var(--wa-divider);
-  color: var(--wa-meta-text);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(240, 244, 252, 0.7);
 }
 
 .timeline-interval-buttons .chip-button:hover {
-  background: var(--wa-row-selected);
-  color: var(--neutral-950);
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(240, 244, 252, 0.95);
 }
 
 .timeline-progress-track {
   height: 3px;
   border-radius: 999px;
-  background: var(--wa-divider);
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
   flex: 1;
   min-width: 80px;
@@ -2951,7 +3455,7 @@ textarea {
 .timeline-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--neutral-900);
+  background: rgba(240, 244, 252, 0.9);
   transform-origin: left;
   transition: transform 0.25s ease;
 }
@@ -2962,14 +3466,15 @@ textarea {
   gap: 10px;
   padding: 6px 0 2px;
   margin-top: 6px;
-  border-top: 1px solid var(--wa-divider);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 11px;
 }
 
 .ops-count-pill {
-  background: var(--white);
-  color: var(--wa-meta-text);
-  border: 1px solid var(--wa-divider);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  color: rgba(240, 244, 252, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   padding: 2px 10px;
   font-weight: 500;
@@ -2991,14 +3496,14 @@ textarea {
 .ops-countdown-track {
   height: 4px;
   border-radius: 999px;
-  background: var(--neutral-200);
+  background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
 
 .ops-countdown-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--neutral-950);
+  background: rgba(240, 244, 252, 0.9);
   transform-origin: right;
   transition: transform 1s linear;
 }
@@ -3011,7 +3516,7 @@ textarea {
 }
 
 .ops-countdown-label {
-  color: var(--neutral-500);
+  color: rgba(240, 244, 252, 0.6);
   font-size: 11px;
   letter-spacing: 0.02em;
   overflow: hidden;
@@ -3025,14 +3530,14 @@ textarea {
   font-variant-numeric: tabular-nums;
   font-size: 14px;
   font-weight: 600;
-  color: var(--neutral-600);
+  color: rgba(240, 244, 252, 0.8);
   letter-spacing: 0.02em;
 }
 
 .ops-countdown-seconds {
   font-size: 15px;
   font-weight: 800;
-  color: var(--neutral-950);
+  color: rgba(240, 244, 252, 0.95);
   letter-spacing: 0;
 }
 
@@ -3088,69 +3593,93 @@ textarea {
   color: var(--white);
 }
 
+/* ─── Bubble inner: paragraph + source tags inline above footer ─── */
 .message-bubble p {
   margin: 0;
 }
 
+/* Source tags — chip עדין בתוך הבועה לפני ה-footer (לדוגמה "הובי") */
 .source-tags {
+  display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  margin-top: 6px;
+  padding: 0;
+  border-top: none;
 }
 
 .source-tags span {
-  border-radius: 999px;
-  border: 1px solid var(--neutral-200);
-  padding: 2px 10px;
-  font-size: 10px;
+  border-radius: 6px;
+  border: none;
+  padding: 1px 7px;
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: var(--neutral-400);
-  background: transparent;
+  text-transform: none;
+  color: #c9a882;
+  background: rgba(139, 115, 85, 0.2);
+  line-height: 1.5;
 }
 
-.message-row:not(.ghost) .source-tags span {
-  background: var(--neutral-50);
-  color: var(--neutral-500);
-}
-
-.message-row.ghost .source-tags {
-  border-top-color: rgba(0, 0, 0, 0.06);
-}
-
-.message-row.user .source-tags {
-  border-top-color: rgba(255, 255, 255, 0.1);
-}
-
+/* בהודעת משתמש — תגיות בלבן שקוף */
 .message-row.user .source-tags span {
-  border-color: rgba(255, 255, 255, 0.15);
-  color: var(--neutral-400);
+  background: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
 }
 
-/* Timestamp — קטן ועדין מתחת לבועה, כמו WhatsApp Web */
-.message-body > .timestamp {
+/* ─── Camera badge — כותרת מצלמה מעל בועת הודעה בצ'אט קבוצתי ─── */
+.message-camera-header {
+  margin-bottom: 3px;
+}
+
+.message-camera-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  background: rgba(91, 141, 239, 0.15);
+  border: 1px solid rgba(91, 141, 239, 0.30);
+  color: #a8c4f5;
   font-size: 11px;
-  color: var(--wa-meta-text);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.message-camera-badge::before {
+  content: '◈';
+  font-size: 10px;
+  color: #5b8def;
+}
+
+/* ─── Inline timestamp INSIDE bubble at bottom-end (WhatsApp meta) ─── */
+.message-bubble > .timestamp {
+  position: absolute;
+  inset-block-end: 4px;
+  inset-inline-end: 10px;
+  font-size: 10.5px;
+  color: rgba(240, 244, 252, 0.5);
   letter-spacing: 0;
   text-transform: none;
-  align-self: flex-end;
-  margin-top: 0;
-  padding-inline: 4px;
+  margin: 0;
+  padding: 0;
   opacity: 1;
-  transition: none;
   font-weight: 400;
   line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
 }
 
-.message-row.user .message-body > .timestamp {
-  color: var(--wa-meta-text);
+/* USER bubble: מידע על רקע כהה — בהיר יותר */
+.message-row.user .message-bubble > .timestamp {
+  color: rgba(240, 244, 252, 0.6);
 }
 
-.message-row.user:hover .message-body > .timestamp,
-.message-row:hover .message-body > .timestamp {
-  opacity: 1;
+/* SYSTEM bubble: ממורכז; ה-timestamp בפינה */
+.message-row.system .message-bubble > .timestamp {
+  color: rgba(240, 244, 252, 0.5);
 }
 
 /* Composer — סגנון WhatsApp Web: שורה אחת עם input מעוגל וכפתור שליחה inline */
@@ -3158,8 +3687,8 @@ textarea {
   position: absolute;
   inset-inline: 0;
   inset-block-end: 0;
-  padding: 8px 16px;
-  border-top: none;
+  padding: 10px 18px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-rows: auto auto;
@@ -3167,41 +3696,41 @@ textarea {
     "suggestions suggestions"
     "textarea     send";
   column-gap: 10px;
-  row-gap: 6px;
-  align-items: center;
-  background: var(--wa-composer-bg);
-  backdrop-filter: none;
+  row-gap: 8px;
+  align-items: end;
+  background: rgba(8, 8, 9, 0.6);
+  backdrop-filter: blur(18px);
   z-index: 2;
 }
 
 .composer textarea {
   grid-area: textarea;
-  min-height: 42px;
+  min-height: 44px;
   max-height: 120px;
   font-size: 14.5px;
   line-height: 1.45;
   resize: none;
-  border-radius: 8px;
-  padding: 10px 14px;
-  border: none;
-  background: var(--wa-input-bg);
-  color: var(--neutral-950);
-  transition: background 150ms ease;
+  border-radius: 10px;
+  padding: 11px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(240, 244, 252, 0.95);
+  transition: background 150ms ease, border-color 150ms ease;
   width: 100%;
   box-sizing: border-box;
-  box-shadow: 0 1px 1px rgba(11, 20, 26, 0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   overflow-y: auto;
 }
 
 .composer textarea:focus {
-  background: var(--white);
-  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   outline: none;
-  box-shadow: 0 1px 2px rgba(11, 20, 26, 0.1);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
 }
 
 .composer textarea::placeholder {
-  color: var(--wa-meta-text);
+  color: rgba(240, 244, 252, 0.4);
 }
 
 .composer-suggestions {
@@ -3215,16 +3744,17 @@ textarea {
   justify-content: flex-end;
   gap: 8px;
   justify-self: end;
-  align-self: center;
+  align-self: end;
+  height: 44px;
 }
 
 .composer-actions .primary-button {
-  background: var(--neutral-950);
-  color: var(--white);
-  border-color: var(--neutral-950);
+  background: rgba(245, 245, 245, 0.92);
+  color: var(--neutral-950);
+  border-color: rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   font-weight: 600;
   font-size: 0;
@@ -3234,15 +3764,16 @@ textarea {
   position: relative;
   flex-shrink: 0;
   transition: background 150ms ease, transform 120ms ease, opacity 150ms ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* אייקון חץ שליחה (ב-RTL החץ פונה שמאלה) */
+/* אייקון חץ שליחה (ב-RTL נשאר מתכוון להכיוון בו הטקסט "טס") */
 .composer-actions .primary-button::before {
   content: '';
   display: block;
-  width: 18px;
-  height: 18px;
-  background: var(--white);
+  width: 20px;
+  height: 20px;
+  background: var(--neutral-950);
   -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M2 21l21-9L2 3v7l15 2-15 2z' fill='black'/></svg>") center / contain no-repeat;
           mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M2 21l21-9L2 3v7l15 2-15 2z' fill='black'/></svg>") center / contain no-repeat;
 }
@@ -3253,13 +3784,18 @@ html[dir='rtl'] .composer-actions .primary-button::before {
 }
 
 .composer-actions .primary-button:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .composer-actions .primary-button:not(:disabled):hover {
-  background: var(--neutral-800);
-  transform: scale(1.04);
+  background: rgba(255, 255, 255, 0.98);
+  transform: scale(1.05);
+}
+
+.composer-actions .primary-button:not(:disabled):active {
+  transform: scale(0.96);
 }
 
 /* הכפתור "הגדרות ערוץ" (mobile-only) לא חלק מהגריד ב-desktop */
@@ -3443,19 +3979,20 @@ html[dir='rtl'] .composer-actions .primary-button::before {
 }
 
 .status-live {
-  background: var(--neutral-950);
+  background: rgba(240, 244, 252, 0.95);
+  box-shadow: 0 0 0 3px rgba(240, 244, 252, 0.15);
 }
 
 .status-sync {
-  background: var(--neutral-500);
+  background: rgba(240, 244, 252, 0.65);
 }
 
 .status-degraded {
-  background: var(--neutral-400);
+  background: rgba(240, 244, 252, 0.45);
 }
 
 .status-offline {
-  background: var(--neutral-300);
+  background: rgba(240, 244, 252, 0.25);
 }
 
 .channel-status-dot {
@@ -3492,12 +4029,15 @@ html[dir='rtl'] .composer-actions .primary-button::before {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 820px) {
   .app-shell {
     padding: 0;
     gap: 0;
     height: 100svh;
-    background: var(--wa-shell-bg);
+    background:
+      radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0) 40%),
+      linear-gradient(180deg, rgba(8, 8, 9, 0.98), rgba(16, 16, 18, 0.98)),
+      #09090b;
   }
 
   .app-shell::before {
@@ -3512,6 +4052,13 @@ html[dir='rtl'] .composer-actions .primary-button::before {
     border-radius: 0;
     box-shadow: none;
   }
+  
+  /* הפחת opacity של ה-intel blips במובייל */
+  .ghostlive-code-blip {
+    opacity: 0;
+    max-width: 18ch;
+    font-size: 8px;
+  }
 
   .topbar {
     height: 56px;
@@ -3520,9 +4067,9 @@ html[dir='rtl'] .composer-actions .primary-button::before {
     top: 0;
     z-index: 30;
     border-top: none;
-    border-bottom: 1px solid var(--wa-divider);
-    background: var(--wa-header-bg);
-    backdrop-filter: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(8, 8, 9, 0.8);
+    backdrop-filter: blur(18px);
     padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
     gap: 8px;
   }
@@ -3603,7 +4150,7 @@ html[dir='rtl'] .composer-actions .primary-button::before {
   }
 
   .inbox-panel {
-    background: var(--wa-sidebar-bg);
+    background: transparent;
     backdrop-filter: none;
   }
 
@@ -3611,23 +4158,23 @@ html[dir='rtl'] .composer-actions .primary-button::before {
     position: sticky;
     top: 0;
     z-index: 4;
-    background: var(--wa-header-bg);
-    backdrop-filter: none;
-    border-bottom: 1px solid var(--wa-divider);
+    background: rgba(8, 8, 9, 0.8);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .inbox-search-bar {
     padding: 8px 12px;
-    background: var(--wa-sidebar-bg);
-    border-bottom: 1px solid var(--wa-divider);
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   }
 
   .inbox-search-input {
-    background: var(--wa-row-selected);
-    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
     min-height: 38px;
-    backdrop-filter: none;
+    backdrop-filter: blur(8px);
   }
 
   /* Mobile: שורות שיחה אחידות, ללא גלאס מקושטות */
@@ -3653,13 +4200,13 @@ html[dir='rtl'] .composer-actions .primary-button::before {
   }
 
   .chat-list-item:hover {
-    background: var(--wa-row-hover);
+    background: rgba(255, 255, 255, 0.06);
     border: none;
     box-shadow: none;
   }
 
   .chat-list-item.selected {
-    background: var(--wa-row-selected);
+    background: rgba(255, 255, 255, 0.1);
     border: none;
     box-shadow: none;
   }
@@ -3667,7 +4214,7 @@ html[dir='rtl'] .composer-actions .primary-button::before {
   .chat-list-item.channel-alerting {
     border: none;
     box-shadow: none;
-    background: rgba(185, 28, 28, 0.05);
+    background: rgba(185, 28, 28, 0.15);
   }
 
   .chat-list-row strong {
@@ -3787,12 +4334,12 @@ html[dir='rtl'] .composer-actions .primary-button::before {
     justify-content: space-between;
     gap: 8px;
     padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-    border-top: 1px solid var(--wa-divider);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
     border-inline: none;
     border-bottom: none;
     border-radius: 0;
-    background: var(--wa-header-bg);
-    backdrop-filter: none;
+    background: rgba(8, 8, 9, 0.8);
+    backdrop-filter: blur(18px);
     box-shadow: none;
     position: sticky;
     bottom: 0;
@@ -3809,13 +4356,13 @@ html[dir='rtl'] .composer-actions .primary-button::before {
   .bottom-nav button:not(.active) {
     background: transparent;
     border-color: transparent;
-    color: var(--wa-icon);
+    color: rgba(240, 244, 252, 0.6);
   }
 
   .bottom-nav button.active {
-    background: var(--white);
-    color: var(--neutral-950);
-    border-color: var(--wa-divider);
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(240, 244, 252, 0.98);
+    border-color: rgba(255, 255, 255, 0.16);
     font-weight: 600;
   }
 

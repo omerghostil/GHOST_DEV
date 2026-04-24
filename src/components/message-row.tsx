@@ -66,15 +66,21 @@ export function MessageRow({ message, onDismissFrame }: MessageRowProps) {
             {message.alertLevel === 'rating' && message.score != null ? ` ${message.score}/10` : ''}
           </span>
         ) : null}
+        {message.sources && message.sources.length === 1 ? (
+          <div className="message-camera-header">
+            <span className="message-camera-badge">{message.sources[0]}</span>
+          </div>
+        ) : null}
         <div className="message-bubble">
           <p>{message.text}</p>
-          {message.sources ? (
+          {message.sources && message.sources.length > 1 ? (
             <div className="source-tags">
               {message.sources.map((source) => (
                 <span key={source}>{source}</span>
               ))}
             </div>
           ) : null}
+          <span className="timestamp">{message.time}</span>
         </div>
         {message.frameDataUrl ? (
           <div className="message-frame-wrap">
@@ -95,7 +101,6 @@ export function MessageRow({ message, onDismissFrame }: MessageRowProps) {
             ) : null}
           </div>
         ) : null}
-        <span className="timestamp">{message.time}</span>
       </div>
     </article>
   )
