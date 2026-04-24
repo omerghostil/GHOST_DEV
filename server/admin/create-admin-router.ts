@@ -20,6 +20,7 @@ import type { ChannelUsageField } from '../db/repository-types'
 import { USER_ROLES } from './types'
 import type { IRealtimeHub } from '../realtime/realtime-hub-types'
 import { createFirebaseUser } from '../auth/firebase-auth-service'
+import { syncOrganizationUsage, reconcileAllOrganizations } from './sync-org-usage'
 
 interface CreateAdminRouterOptions {
   store: IAdminRepository
@@ -205,7 +206,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     return response.json(store.listChannels(organizationId))
   })
 
-  router.post('/channels', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), (request, response) => {
+  router.post('/channels', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), async (request, response) => {
     const parsed = CreateChannelSchema.safeParse(request.body)
     if (!parsed.success) {
       return response.status(400).json({ error: 'בקשת יצירת ערוץ לא תקינה.' })
@@ -220,17 +221,20 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
     if (!organization) {
       return response.status(404).json({ error: 'הארגון לא נמצא.' })
     }
-    const channelsCount = store.listChannels(parsed.data.organizationId).length
-    if (channelsCount >= organization.limits.maxChannels) {
+    const realChannelsCount = await store.countFullChannels(parsed.data.organizationId)
+    if (realChannelsCount >= organization.limits.maxChannels) {
       return response.status(409).json({ error: 'חריגה ממגבלת מספר הערוצים לארגון.' })
     }
 
     const created = store.createChannel(parsed.data)
-    store.updateOrganizationUsage(parsed.data.organizationId, (usage) => ({
-      ...usage,
-      channelsCount: store.listChannels(parsed.data.organizationId).length,
-      updatedAtIso: new Date().toISOString(),
-    }))
+    await syncOrganizationUsage(store, parsed.data.organizationId)
+    realtimeHub.publish({
+      eventType: 'usage.updated',
+      organizationId: parsed.data.organizationId,
+      severity: 'info',
+      timestampIso: new Date().toISOString(),
+      payload: { action: 'admin.channel.created', channelId: created.id },
+    })
     return response.status(201).json(created)
   })
 
@@ -257,6 +261,13 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       return response.status(403).json({ error: 'אין הרשאה ליצור מבצע בארגון זה.' })
     }
     const created = store.createCampaign(parsed.data)
+    realtimeHub.publish({
+      eventType: 'usage.updated',
+      organizationId: parsed.data.organizationId,
+      severity: 'info',
+      timestampIso: new Date().toISOString(),
+      payload: { action: 'campaign.created', campaignId: created.id },
+    })
     return response.status(201).json(created)
   })
 
@@ -329,7 +340,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
   router.put('/billing/openai-key', requireRoles([USER_ROLES.superAdmin]), (request, response) => {
     const parsed = SetOpenAiKeySchema.safeParse(request.body)
     if (!parsed.success) {
-      return response.status(400).json({ error: 'בקשת מפתח OpenAI לא תקינה.' })
+      return response.status(400).json({ error: 'בקשת מפתח AI לא תקינה.' })
     }
     const updatedOrg = store.updateOrganizationOpenAiKey(
       parsed.data.organizationId,
@@ -341,7 +352,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
         action: 'openai_key.updated',
         targetType: 'organization',
         targetId: parsed.data.organizationId,
-        details: 'מפתח OpenAI עודכן בהצלחה.',
+        details: 'מפתח AI עודכן בהצלחה.',
       })
     }
     return response.json({ organizationId: updatedOrg.id, openAiLastSyncIso: updatedOrg.openAiLastSyncIso })
@@ -363,6 +374,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       receivedMessages: usage.receivedMessages + parsed.data.receivedMessages,
       devicesCount: Math.max(usage.devicesCount, parsed.data.devicesCount),
       channelsCount: Math.max(usage.channelsCount, parsed.data.channelsCount),
+      operationsCount: usage.operationsCount ?? 0,
       aiTotalCost: usage.aiTotalCost + parsed.data.aiTotalCost,
       apiTotalCost: usage.apiTotalCost + parsed.data.apiTotalCost,
       agentsTotalCost: usage.agentsTotalCost + parsed.data.agentsTotalCost,
@@ -480,20 +492,31 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
   router.get(
     '/dashboard/overview',
     requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]),
-    (request, response) => {
+    async (request, response) => {
       const organizations = store.listOrganizations()
       const visibleOrganizations =
         request.auth?.role === USER_ROLES.superAdmin
           ? organizations
           : organizations.filter((organization) => organization.id === request.auth?.organizationId)
 
-      const totals = visibleOrganizations.reduce(
+      await Promise.all(
+        visibleOrganizations.map((org) => syncOrganizationUsage(store, org.id)),
+      )
+
+      const freshOrganizations = store.listOrganizations()
+      const freshVisible =
+        request.auth?.role === USER_ROLES.superAdmin
+          ? freshOrganizations
+          : freshOrganizations.filter((organization) => organization.id === request.auth?.organizationId)
+
+      const totals = freshVisible.reduce(
         (acc, organization) => ({
           organizationsCount: acc.organizationsCount + 1,
           sentMessages: acc.sentMessages + organization.usage.sentMessages,
           receivedMessages: acc.receivedMessages + organization.usage.receivedMessages,
           devicesCount: acc.devicesCount + organization.usage.devicesCount,
           channelsCount: acc.channelsCount + organization.usage.channelsCount,
+          operationsCount: acc.operationsCount + (organization.usage.operationsCount ?? 0),
           aiTotalCost: acc.aiTotalCost + organization.usage.aiTotalCost,
           apiTotalCost: acc.apiTotalCost + organization.usage.apiTotalCost,
           agentsTotalCost: acc.agentsTotalCost + organization.usage.agentsTotalCost,
@@ -504,6 +527,7 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
           receivedMessages: 0,
           devicesCount: 0,
           channelsCount: 0,
+          operationsCount: 0,
           aiTotalCost: 0,
           apiTotalCost: 0,
           agentsTotalCost: 0,
@@ -512,33 +536,49 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
 
       return response.json({
         totals,
-        organizations: visibleOrganizations,
+        organizations: freshVisible,
       })
     },
   )
 
-  router.get('/dashboard/org/:organizationId', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), (request, response) => {
+  router.get('/dashboard/org/:organizationId', requireRoles([USER_ROLES.superAdmin, USER_ROLES.systemManager]), async (request, response) => {
+    const orgId = String(request.params.organizationId)
     if (
       request.auth &&
-      !canManageOrganization(String(request.params.organizationId), request.auth.organizationId, request.auth.role)
+      !canManageOrganization(orgId, request.auth.organizationId, request.auth.role)
     ) {
       return response.status(403).json({ error: 'אין הרשאה לארגון זה.' })
     }
-    const organization = store.getOrganizationById(String(request.params.organizationId))
-    if (!organization) {
+    const existingOrg = store.getOrganizationById(orgId)
+    if (!existingOrg) {
       return response.status(404).json({ error: 'הארגון לא נמצא.' })
     }
+    await syncOrganizationUsage(store, orgId)
+    const organization = store.getOrganizationById(orgId)!
     const now = new Date()
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const fullChannels = await store.listFullChannels(orgId)
+    const channels = fullChannels.map((ch) => ({
+      id: ch.id,
+      organizationId: ch.organizationId,
+      name: ch.name,
+      isBlocked: ch.isBlocked,
+    }))
+    const [operations, recentRuns] = await Promise.all([
+      store.listAllOperations(orgId),
+      store.listRecentOperationRuns(orgId, 50),
+    ])
     return response.json({
       organization,
-      channels: store.listChannels(String(request.params.organizationId)),
-      campaigns: store.listCampaigns(String(request.params.organizationId)),
+      channels,
+      operations,
+      recentRuns,
+      campaigns: store.listCampaigns(orgId),
       users: store
-        .listUsersByOrganization(String(request.params.organizationId))
+        .listUsersByOrganization(orgId)
         .map((user) => ({ ...user, passwordHash: undefined })),
-      usageLedger: store.listUsageLedger(String(request.params.organizationId)),
-      channelStats: store.getChannelUsageMonthly(String(request.params.organizationId), currentMonthKey),
+      usageLedger: store.listUsageLedger(orgId),
+      channelStats: store.getChannelUsageMonthly(orgId, currentMonthKey),
     })
   })
 
@@ -578,6 +618,35 @@ export function createAdminRouter({ store, realtimeHub }: CreateAdminRouterOptio
       payload: updated as unknown as Record<string, unknown>,
     })
     return response.json(updated)
+  })
+
+  router.post('/usage/reconcile', requireRoles([USER_ROLES.superAdmin]), async (request, response) => {
+    try {
+      const reports = await reconcileAllOrganizations(store)
+      const totalDiffs = reports.reduce((sum, r) => sum + r.diffs.length, 0)
+      if (request.auth) {
+        store.addAuditLog({
+          actorUserId: request.auth.userId,
+          action: 'usage.reconciled',
+          targetType: 'system',
+          targetId: 'all',
+          details: `ריקונסיליאציה: ${reports.length} ארגונים, ${totalDiffs} פערים תוקנו.`,
+        })
+      }
+      if (totalDiffs > 0) {
+        realtimeHub.publish({
+          eventType: 'usage.updated',
+          organizationId: '',
+          severity: 'info',
+          timestampIso: new Date().toISOString(),
+          payload: { action: 'reconciliation', totalDiffs },
+        })
+      }
+      return response.json({ reports, totalDiffs })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ריקונסיליאציה נכשלה.'
+      return response.status(500).json({ error: message })
+    }
   })
 
   router.get('/audit-logs', requireRoles([USER_ROLES.superAdmin]), (_request, response) => {

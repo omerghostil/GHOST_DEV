@@ -77,7 +77,7 @@ export async function requestOperationScan(
       }
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         throw new Error(
-          'שירות סריקת המבצעים לא זמין. הרץ npm run dev (כולל proxy) והגדר OPENAI_API_KEY ב-.env.',
+          'שירות סריקת המבצעים לא זמין. ודא שהשרת רץ ושמפתח ה-API מוגדר כראוי.',
         )
       }
       throw new Error(`סריקת מבצעים נכשלה (HTTP ${response.status}).`)

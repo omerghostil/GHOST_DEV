@@ -18,7 +18,16 @@ import {
   MAX_TIMELINE_HISTORY_ITEMS,
   NEAR_BOTTOM_THRESHOLD_PX,
 } from './data/constants'
-import { INITIAL_CHANNELS } from './data/initial-channels'
+import {
+  fetchChannels as fetchChannelsFromServer,
+  saveMessage,
+  createChannel as createChannelApi,
+  updateChannel as updateChannelApi,
+  deleteChannelApi,
+  createOperationApi,
+  updateOperationApi,
+  deleteOperationApi,
+} from './services/channels-api'
 import type {
   Channel,
   Message,
@@ -127,16 +136,19 @@ function trackMessage(
 
 interface AppProps {
   currentUserRole: 'system_manager' | 'regular_user'
+  fullName: string
+  organizationName: string
   onLogout: () => void
 }
 
-function App({ currentUserRole, onLogout }: AppProps) {
+function App({ currentUserRole, fullName, organizationName, onLogout }: AppProps) {
   const canAccessCommandCenter =
     currentUserRole === 'system_manager' || currentUserRole === 'regular_user'
-  const [channels, setChannels] = useState(INITIAL_CHANNELS)
-  const [selectedChannelId, setSelectedChannelId] = useState(INITIAL_CHANNELS[0].id)
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('')
+  const [isLoadingChannels, setIsLoadingChannels] = useState(true)
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>('chat')
-  const [isDetailsCollapsed, setIsDetailsCollapsed] = useState(false)
+  const [isDetailsCollapsed, setIsDetailsCollapsed] = useState(true)
   const [isSending, setIsSending] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [visibleChannelsCount, setVisibleChannelsCount] = useState(INBOX_PAGE_SIZE)
@@ -164,6 +176,25 @@ function App({ currentUserRole, onLogout }: AppProps) {
   const touchStartXRef = useRef<number | null>(null)
   const touchStartYRef = useRef<number | null>(null)
   const touchTargetIsInteractiveRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setIsLoadingChannels(true)
+    fetchChannelsFromServer()
+      .then((serverChannels) => {
+        if (cancelled) return
+        setChannels(serverChannels)
+        if (serverChannels.length > 0) {
+          setSelectedChannelId(serverChannels[0].id)
+        } else {
+          setActiveTopbarNav('Command Center')
+          setShowNewChannelForm(true)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setIsLoadingChannels(false) })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const viewParam = new URLSearchParams(window.location.search).get('view')
@@ -241,9 +272,15 @@ function App({ currentUserRole, onLogout }: AppProps) {
     [channels, linkedChannelIdSet],
   )
 
-  const selectedChannel = useMemo(
-    () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0],
-    [channels, selectedChannelId],
+  const EMPTY_CHANNEL: Channel = useMemo(() => ({
+    id: '', name: '', type: 'personal', subtitle: '', location: '',
+    watchScope: '', description: '', memoryInterval: 30, rtspFeed: '',
+    unread: 0, liveState: 'OFFLINE', members: [], messages: [], operations: [],
+  }), [])
+
+  const selectedChannel: Channel = useMemo(
+    () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? EMPTY_CHANNEL,
+    [channels, selectedChannelId, EMPTY_CHANNEL],
   )
 
   useEffect(() => () => releaseCameraResources(), [])
@@ -276,6 +313,10 @@ function App({ currentUserRole, onLogout }: AppProps) {
         channel.id === selectedChannel.id ? { ...channel, [field]: value } : channel,
       ),
     )
+    const persistableFields = ['name', 'subtitle', 'location', 'watchScope', 'description', 'memoryInterval', 'rtspFeed', 'liveState', 'cameraEnabled', 'isBlocked', 'members', 'linkedChannelIds', 'type']
+    if (persistableFields.includes(field as string)) {
+      updateChannelApi(selectedChannel.id, { [field]: value }).catch(() => undefined)
+    }
   }
 
   function selectChannel(channelId: string) {
@@ -392,6 +433,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
           : channel,
       ),
     )
+    saveMessage(payload.channelId, scanMessage).catch(() => undefined)
 
     trackMessage(payload.channelId, 'incoming', 'operation')
 
@@ -474,7 +516,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
   }, [selectedChannel, nextRunAt])
 
   /**
-   * שולח הודעה בערוץ, לוכד פריים עדכני, שולח ל-OpenAI דרך השרת ומחזיר תשובה לצ׳אט.
+   * שולח הודעה בערוץ, לוכד פריים עדכני, שולח לשרת לניתוח ומחזיר תשובה לצ׳אט.
    */
   async function handleMessageSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -504,6 +546,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
       unread: 0,
       messages: [...channel.messages, userMessage],
     }))
+    saveMessage(selectedChannel.id, userMessage).catch(() => undefined)
     trackMessage(selectedChannel.id, 'outgoing', 'user')
 
     try {
@@ -530,6 +573,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
         unread: 0,
         messages: [...channel.messages, ghostMessage],
       }))
+      saveMessage(selectedChannel.id, ghostMessage).catch(() => undefined)
       trackMessage(selectedChannel.id, 'incoming', 'ghost')
 
       const enabledOperations = selectedChannel.operations.filter((operation) => operation.enabled)
@@ -561,6 +605,9 @@ function App({ currentUserRole, onLogout }: AppProps) {
               ...channel,
               messages: [...channel.messages, ...scanMessages],
             }))
+            for (const msg of scanMessages) {
+              saveMessage(selectedChannel.id, msg).catch(() => undefined)
+            }
             trackMessage(selectedChannel.id, 'incoming', 'operation', scanMessages.length)
           }
         } catch (scanError) {
@@ -623,18 +670,33 @@ function App({ currentUserRole, onLogout }: AppProps) {
       parsedSchedule: parseSchedule(scheduleText) ?? undefined,
     }
 
+    setOperationDraft(DEFAULT_OPERATION_DRAFT)
+
+    const channelId = selectedChannel.id
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
-        channel.id === selectedChannel.id
-          ? {
-              ...channel,
-              operations: [nextOperation, ...channel.operations],
-            }
+        channel.id === channelId
+          ? { ...channel, operations: [nextOperation, ...channel.operations] }
           : channel,
       ),
     )
 
-    setOperationDraft(DEFAULT_OPERATION_DRAFT)
+    createOperationApi(channelId, nextOperation)
+      .then((serverOp) => {
+        setChannels((currentChannels) =>
+          currentChannels.map((channel) =>
+            channel.id === channelId
+              ? {
+                  ...channel,
+                  operations: channel.operations.map((op) =>
+                    op.id === nextOperation.id ? { ...op, id: serverOp.id } : op,
+                  ),
+                }
+              : channel,
+          ),
+        )
+      })
+      .catch(() => undefined)
   }
 
   /**
@@ -707,23 +769,39 @@ function App({ currentUserRole, onLogout }: AppProps) {
       cameraEnabled = false
     }
 
-    setChannels((currentChannels) => [
-      {
-        ...nextChannel,
-        cameraEnabled,
-        lastFrameDataUrl: initialFrameDataUrl,
-      },
-      ...currentChannels,
-    ])
-    setSelectedChannelId(nextChannel.id)
     setShowNewChannelForm(false)
     setNewChannelDraft(DEFAULT_NEW_CHANNEL_DRAFT)
     setSearchQuery('')
     setVisibleChannelsCount(INBOX_PAGE_SIZE)
     setMobilePanel('chat')
+
+    try {
+      const serverChannel = await createChannelApi({
+        ...nextChannel,
+        cameraEnabled,
+      })
+      const withLocalData: Channel = {
+        ...serverChannel,
+        cameraEnabled,
+        lastFrameDataUrl: initialFrameDataUrl,
+        messages: nextChannel.messages,
+        operations: [],
+        timelineState: buildDefaultTimelineState(),
+      }
+      setChannels((currentChannels) => [withLocalData, ...currentChannels])
+      setSelectedChannelId(serverChannel.id)
+      for (const msg of nextChannel.messages) {
+        saveMessage(serverChannel.id, msg).catch(() => undefined)
+      }
+    } catch {
+      const fallback: Channel = { ...nextChannel, cameraEnabled, lastFrameDataUrl: initialFrameDataUrl }
+      setChannels((currentChannels) => [fallback, ...currentChannels])
+      setSelectedChannelId(nextChannel.id)
+    }
   }
 
   function toggleOperation(operationId: string) {
+    const op = selectedChannel.operations.find((o) => o.id === operationId)
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
         channel.id === selectedChannel.id
@@ -736,6 +814,9 @@ function App({ currentUserRole, onLogout }: AppProps) {
           : channel,
       ),
     )
+    if (op) {
+      updateOperationApi(selectedChannel.id, operationId, { enabled: !op.enabled }).catch(() => undefined)
+    }
   }
 
   function updateOperationInChannelField(
@@ -744,6 +825,10 @@ function App({ currentUserRole, onLogout }: AppProps) {
     field: keyof Pick<Operation, 'name' | 'mode' | 'schedule' | 'trigger' | 'action'>,
     value: string,
   ) {
+    const updatePayload: Record<string, unknown> = { [field]: value }
+    if (field === 'schedule') {
+      updatePayload.parsedSchedule = parseSchedule(value) ?? null
+    }
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
         channel.id === channelId
@@ -763,6 +848,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
           : channel,
       ),
     )
+    updateOperationApi(channelId, operationId, updatePayload).catch(() => undefined)
   }
 
   /**
@@ -779,6 +865,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
           : channel,
       ),
     )
+    deleteOperationApi(channelId, operationId).catch(() => undefined)
   }
 
   /**
@@ -836,6 +923,7 @@ function App({ currentUserRole, onLogout }: AppProps) {
    * אם זה הערוץ האחרון - לא תתבצע מחיקה כדי למנוע מצב ללא ערוצים פעילים.
    */
   function deleteChannel(channelId: string) {
+    deleteChannelApi(channelId).catch(() => undefined)
     let nextSelectedId: string | null = null
     setChannels((currentChannels) => {
       if (currentChannels.length <= 1) {
@@ -1163,9 +1251,21 @@ function App({ currentUserRole, onLogout }: AppProps) {
     }
   }
 
+  if (isLoadingChannels) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <p style={{ color: '#9ca3af', fontSize: 14 }}>טוען ערוצים...</p>
+      </div>
+    )
+  }
+
+
   return (
     <div className="app-shell" data-mobile-panel={mobilePanel}>
       <Topbar
+        fullName={fullName}
+        organizationName={organizationName}
+        role={currentUserRole}
         activeNav={activeTopbarNav}
         canAccessCommandCenter={canAccessCommandCenter}
         channelsCount={channels.length}
@@ -1260,12 +1360,23 @@ function App({ currentUserRole, onLogout }: AppProps) {
               onMessageSubmit={handleMessageSubmit}
               onStartTimelineSampling={handleStartTimelineSampling}
               onStopTimelineSampling={handleStopTimelineSampling}
-              onShowDetails={() => setMobilePanel('details')}
+              onShowDetails={() => {
+                setIsDetailsCollapsed(false)
+                setMobilePanel('details')
+              }}
               onShowInbox={() => setMobilePanel('inbox')}
               onSuggestionClick={setMessageDraft}
               selectedChannel={selectedChannel}
               timelineSamplerState={selectedTimelineSamplerState}
             />
+
+            {!isDetailsCollapsed ? (
+              <div
+                aria-hidden
+                className="details-drawer-backdrop desktop-only"
+                onClick={() => setIsDetailsCollapsed(true)}
+              />
+            ) : null}
 
             <DetailsPanel
               key={selectedChannel.id}

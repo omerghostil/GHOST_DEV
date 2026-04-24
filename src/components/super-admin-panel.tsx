@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
+  AdminOperationRecord,
+  AdminOperationRunRecord,
   AuthProfile,
   ChannelUsageMonthly,
   OrganizationDetailsResponse,
@@ -16,13 +18,14 @@ import {
   getSuperAdminOverview,
   listUsers,
   revealPaymentCard,
-  saveOrganizationOpenAiKey,
+  saveOrganizationAiKey,
   savePaymentCard,
   updateOrganization,
   updateIssue,
   updateUser,
 } from '../services/admin-api'
-import { connectAdminRealtime, type RealtimeEvent } from '../services/realtime-socket'
+import { impersonateUser } from '../services/auth-api'
+import { connectAdminRealtime, type RealtimeEvent, type RealtimeMode } from '../services/realtime-socket'
 import './super-admin-panel.css'
 
 interface SuperAdminPanelProps {
@@ -58,6 +61,20 @@ const ISSUE_SEVERITY_LABELS: Record<'low' | 'medium' | 'high' | 'critical', stri
   critical: 'קריטית',
 }
 
+const OP_MODE_LABELS: Record<string, string> = {
+  alert: 'התרעה',
+  report: 'דוח',
+  rating: 'דירוג',
+  assessment: 'הערכה',
+}
+
+const RUN_STATUS_LABELS: Record<string, string> = {
+  queued: 'בתור',
+  running: 'רץ',
+  success: 'הצלחה',
+  failed: 'נכשל',
+}
+
 const DEFAULT_LIMITS: OrganizationLimits = {
   maxChannels: 20,
   maxMessagesPerChannelPerMonth: 10_000,
@@ -78,6 +95,8 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
   const [events, setEvents] = useState<RealtimeEvent[]>([])
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('')
   const [selectedTab, setSelectedTab] = useState<'overview' | 'users' | 'billing' | 'usage' | 'issues' | 'events'>('overview')
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [realtimeMode, setRealtimeMode] = useState<RealtimeMode>('disconnected')
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [isBusy, setIsBusy] = useState(false)
@@ -87,6 +106,8 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
   const [organizationLimitsDraft, setOrganizationLimitsDraft] = useState<OrganizationLimits>(DEFAULT_LIMITS)
   const [newUserOrgId, setNewUserOrgId] = useState('')
   const [newUsername, setNewUsername] = useState('')
+  const [newUserFirstName, setNewUserFirstName] = useState('')
+  const [newUserLastName, setNewUserLastName] = useState('')
   const [newUserPassword, setNewUserPassword] = useState('')
   const [newUserRole, setNewUserRole] = useState<'system_manager' | 'regular_user'>('regular_user')
   const [selectedUserId, setSelectedUserId] = useState('')
@@ -101,8 +122,8 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
   const [managerCode, setManagerCode] = useState('')
   const [revealedPan, setRevealedPan] = useState('')
   const [savedCardPreview, setSavedCardPreview] = useState<{ maskedPan: string; last4: string; expiryMonth: string; expiryYear: string } | null>(null)
-  const [openAiOrgId, setOpenAiOrgId] = useState('')
-  const [openAiApiKey, setOpenAiApiKey] = useState('')
+  const [aiKeyOrgId, setAiKeyOrgId] = useState('')
+  const [aiApiKey, setAiApiKey] = useState('')
   const [issueFilterOrgId, setIssueFilterOrgId] = useState('')
 
   async function reloadData() {
@@ -110,6 +131,7 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
     setOverview(nextOverview)
     setIssues(nextIssues)
     setAllUsers(nextUsers)
+    setIsInitialLoad(false)
     setSelectedOrganizationId((currentOrganizationId) => {
       if (currentOrganizationId && nextOverview.organizations.some((organization) => organization.id === currentOrganizationId)) {
         return currentOrganizationId
@@ -130,7 +152,7 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
     setOrganizationLimitsDraft(details.organization.limits)
     setNewUserOrgId(organizationId)
     setBillingOrgId(organizationId)
-    setOpenAiOrgId(organizationId)
+    setAiKeyOrgId(organizationId)
     setIssueFilterOrgId(organizationId)
     setManagerCode('')
     setRevealedPan('')
@@ -140,12 +162,15 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
     void reloadData().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : 'טעינת נתונים נכשלה.')
     })
-    const subscription = connectAdminRealtime((event) => {
-      setEvents((currentEvents) => [event, ...currentEvents].slice(0, 40))
-      if (event.eventType === 'usage.updated' || event.eventType === 'issue.created' || event.eventType === 'issue.updated') {
-        void reloadData().catch(() => undefined)
-      }
-    })
+    const subscription = connectAdminRealtime(
+      (event) => {
+        setEvents((currentEvents) => [event, ...currentEvents].slice(0, 40))
+        if (event.eventType === 'usage.updated' || event.eventType === 'issue.created' || event.eventType === 'issue.updated') {
+          void reloadData().catch(() => undefined)
+        }
+      },
+      (mode) => setRealtimeMode(mode),
+    )
     return () => subscription.close()
   }, [])
 
@@ -266,8 +291,8 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
   }
 
   async function handleCreateUser() {
-    if (!newUserOrgId || !newUsername.trim() || !newUserPassword.trim()) {
-      setErrorMessage('נדרש למלא ארגון, שם משתמש וסיסמה.')
+    if (!newUserOrgId || !newUsername.trim() || !newUserFirstName.trim() || !newUserLastName.trim() || !newUserPassword.trim()) {
+      setErrorMessage('נדרש למלא ארגון, שם פרטי, שם משפחה, שם משתמש וסיסמה.')
       return
     }
     setIsBusy(true)
@@ -277,10 +302,14 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
       await createUser({
         organizationId: newUserOrgId,
         username: newUsername.trim(),
+        firstName: newUserFirstName.trim(),
+        lastName: newUserLastName.trim(),
         password: newUserPassword,
         role: newUserRole,
       })
       setNewUsername('')
+      setNewUserFirstName('')
+      setNewUserLastName('')
       setNewUserPassword('')
       setSuccessMessage('המשתמש נוצר בהצלחה.')
       await reloadData()
@@ -342,6 +371,22 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
     }
   }
 
+  async function handleImpersonateUser(userId: string) {
+    setIsBusy(true)
+    setErrorMessage('')
+    try {
+      const payload = await impersonateUser(userId)
+      const jsonBytes = new TextEncoder().encode(JSON.stringify(payload))
+      const encoded = btoa(String.fromCharCode(...jsonBytes))
+      window.open(`${window.location.origin}#impersonate=${encoded}`, '_blank', 'noopener')
+      setSuccessMessage('נפתח חלון חדש כמשתמש המבוקש.')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'התחזות למשתמש נכשלה.')
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
   async function handleSavePaymentCard() {
     if (!billingOrgId || !cardPan || !cardholderName || !expiryMonth || !expiryYear || !billingEmail || !managerCode) {
       setErrorMessage('נדרש למלא את כל פרטי הכרטיס.')
@@ -379,22 +424,22 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
     }
   }
 
-  async function handleSaveOpenAiKey() {
-    if (!openAiOrgId || !openAiApiKey.trim()) {
-      setErrorMessage('יש לבחור ארגון ולהזין מפתח OpenAI.')
+  async function handleSaveAiKey() {
+    if (!aiKeyOrgId || !aiApiKey.trim()) {
+      setErrorMessage('יש לבחור ארגון ולהזין מפתח AI.')
       return
     }
     setIsBusy(true)
     setErrorMessage('')
     setSuccessMessage('')
     try {
-      await saveOrganizationOpenAiKey(openAiOrgId, openAiApiKey.trim())
-      setOpenAiApiKey('')
-      setSuccessMessage('מפתח OpenAI נשמר בהצלחה.')
+      await saveOrganizationAiKey(aiKeyOrgId, aiApiKey.trim())
+      setAiApiKey('')
+      setSuccessMessage('מפתח AI נשמר בהצלחה.')
       await reloadData()
-      await reloadOrganizationDetails(openAiOrgId)
+      await reloadOrganizationDetails(aiKeyOrgId)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'שמירת מפתח OpenAI נכשלה.')
+      setErrorMessage(error instanceof Error ? error.message : 'שמירת מפתח AI נכשלה.')
     } finally {
       setIsBusy(false)
     }
@@ -539,11 +584,11 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
             <h3>נתוני שימוש חיים</h3>
             <div className="sa-kpi-grid">
               <div><span>ערוצים</span><strong>{selectedOrganization.usage.channelsCount}</strong></div>
+              <div><span>מבצעים</span><strong>{selectedOrganization.usage.operationsCount ?? 0}</strong></div>
               <div><span>הודעות יוצאות</span><strong>{selectedOrganization.usage.sentMessages}</strong></div>
               <div><span>הודעות נכנסות</span><strong>{selectedOrganization.usage.receivedMessages}</strong></div>
-              <div><span>התקנים</span><strong>{selectedOrganization.usage.devicesCount}</strong></div>
-              <div><span>עלות AI</span><strong>${selectedOrganization.usage.aiTotalCost.toFixed(2)}</strong></div>
-              <div><span>עלות API</span><strong>${selectedOrganization.usage.apiTotalCost.toFixed(2)}</strong></div>
+              <div><span>עלות AI</span><strong>${`${selectedOrganization.usage.aiTotalCost.toFixed(2)}`}</strong></div>
+              <div><span>עלות API</span><strong>${`${selectedOrganization.usage.apiTotalCost.toFixed(2)}`}</strong></div>
             </div>
           </section>
 
@@ -567,11 +612,21 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
             <ul className="sa-list">
               {selectedOrganizationUsers.map((user) => (
                 <li key={user.id} className={selectedUserId === user.id ? 'active' : ''}>
-                  <button type="button" onClick={() => handleSelectUserForEdit(user)}>
+                  <button type="button" className="sa-user-select-btn" onClick={() => handleSelectUserForEdit(user)}>
                     <strong>{user.username}</strong>
                     <span>{USER_ROLE_LABELS[user.role === 'regular_user' ? 'regular_user' : 'system_manager']}</span>
                     <span>{user.isActive ? USER_STATUS_LABELS.active : USER_STATUS_LABELS.inactive}</span>
                   </button>
+                  {user.isActive && user.role !== 'super_admin' && (
+                    <button
+                      type="button"
+                      className="ghost-button sa-impersonate-btn"
+                      disabled={isBusy}
+                      onClick={() => void handleImpersonateUser(user.id)}
+                    >
+                      פתח כ
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -615,7 +670,15 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
             <h3>יצירת משתמש חדש</h3>
             <div className="sa-form-grid">
               <label>
-                שם משתמש
+                שם פרטי
+                <input value={newUserFirstName} onChange={(event) => setNewUserFirstName(event.target.value)} />
+              </label>
+              <label>
+                שם משפחה
+                <input value={newUserLastName} onChange={(event) => setNewUserLastName(event.target.value)} />
+              </label>
+              <label>
+                שם משתמש (להתחברות)
                 <input value={newUsername} onChange={(event) => setNewUsername(event.target.value)} />
               </label>
               <label>
@@ -674,15 +737,15 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
           </section>
 
           <section className="sa-card">
-            <h3>מפתח OpenAI לארגון</h3>
+            <h3>מפתח AI לארגון</h3>
             <div className="sa-form-grid">
               <label>
-                מפתח OpenAI ארגוני
-                <input value={openAiApiKey} onChange={(event) => setOpenAiApiKey(event.target.value)} placeholder="sk-..." />
+                מפתח AI ארגוני
+                <input value={aiApiKey} onChange={(event) => setAiApiKey(event.target.value)} placeholder="sk-..." />
               </label>
             </div>
             <div className="sa-inline-actions">
-              <button className="primary-button" type="button" disabled={isBusy} onClick={() => void handleSaveOpenAiKey()}>
+              <button className="primary-button" type="button" disabled={isBusy} onClick={() => void handleSaveAiKey()}>
                 שמור מפתח
               </button>
             </div>
@@ -701,7 +764,7 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
               {(organizationDetails?.usageLedger ?? []).map((ledger) => (
                 <li key={ledger.id}>
                   <div className="sa-ledger-row">
-                    <strong>{ledger.metricType}</strong>
+                    <strong>{{ openai: 'ניתוח תמונה', api: 'API', agent: 'סוכן', message: 'הודעה' }[ledger.metricType] ?? ledger.metricType}</strong>
                     <span>${ledger.amount.toFixed(2)}</span>
                     <span>{new Date(ledger.createdAtIso).toLocaleString()}</span>
                   </div>
@@ -756,22 +819,88 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
           </section>
 
           <section className="sa-card">
-            <h3>מבצעים בארגון ({(organizationDetails?.campaigns ?? []).length})</h3>
-            {(organizationDetails?.campaigns ?? []).length === 0 ? (
+            <h3>מבצעים בארגון ({(organizationDetails?.operations ?? []).length})</h3>
+            {(organizationDetails?.operations ?? []).length === 0 ? (
               <p className="sa-subtle">אין מבצעים בארגון זה.</p>
             ) : (
-              <ul className="sa-compact-list">
-                {(organizationDetails?.campaigns ?? []).map((campaign) => (
-                  <li key={campaign.id}>
-                    <strong>{campaign.name}</strong>
-                    <span className={`sa-org-status ${campaign.isActive ? 'active' : 'suspended'}`}>
-                      {campaign.isActive ? 'פעיל' : 'מושבת'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="sa-table-wrap">
+                <table className="sa-stats-table">
+                  <thead>
+                    <tr>
+                      <th>שם</th>
+                      <th>ערוץ</th>
+                      <th>מצב</th>
+                      <th>תזמון</th>
+                      <th>סטטוס</th>
+                      <th>הרצה אחרונה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(organizationDetails?.operations ?? []).map((op: AdminOperationRecord) => {
+                      const channelName = (organizationDetails?.channels ?? []).find((c) => c.id === op.channelId)?.name ?? '—'
+                      const lastRun = (organizationDetails?.recentRuns ?? []).find(
+                        (r: AdminOperationRunRecord) => r.operationId === op.id,
+                      )
+                      return (
+                        <tr key={op.id}>
+                          <td><strong>{op.name}</strong></td>
+                          <td>{channelName}</td>
+                          <td>{OP_MODE_LABELS[op.mode] ?? op.mode}</td>
+                          <td>{op.schedule || '—'}</td>
+                          <td>
+                            <span className={`sa-org-status ${op.enabled ? 'active' : 'suspended'}`}>
+                              {op.enabled ? 'פעיל' : 'מושבת'}
+                            </span>
+                          </td>
+                          <td>
+                            {lastRun ? (
+                              <span className={`sa-run-status ${lastRun.status}`}>
+                                {RUN_STATUS_LABELS[lastRun.status]}
+                                {lastRun.endedAtIso ? ` (${new Date(lastRun.endedAtIso).toLocaleString('he-IL')})` : ''}
+                              </span>
+                            ) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
+
+          {(organizationDetails?.recentRuns ?? []).length > 0 && (
+            <section className="sa-card">
+              <h3>היסטוריית הרצות אחרונות ({(organizationDetails?.recentRuns ?? []).length})</h3>
+              <div className="sa-table-wrap">
+                <table className="sa-stats-table">
+                  <thead>
+                    <tr>
+                      <th>מבצע</th>
+                      <th>סטטוס</th>
+                      <th>התחלה</th>
+                      <th>סיום</th>
+                      <th>שגיאה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(organizationDetails?.recentRuns ?? []).map((run: AdminOperationRunRecord) => {
+                      const opName = (organizationDetails?.operations ?? []).find((o) => o.id === run.operationId)?.name ?? run.operationId.slice(0, 8)
+                      return (
+                        <tr key={run.id}>
+                          <td><strong>{opName}</strong></td>
+                          <td><span className={`sa-run-status ${run.status}`}>{RUN_STATUS_LABELS[run.status]}</span></td>
+                          <td>{new Date(run.startedAtIso).toLocaleString('he-IL')}</td>
+                          <td>{run.endedAtIso ? new Date(run.endedAtIso).toLocaleString('he-IL') : '—'}</td>
+                          <td>{run.errorMessage ?? '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
       )
     }
@@ -829,7 +958,7 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
         <header className="sa-sidebar-header">
           <p className="eyebrow">סופר אדמין</p>
           <h2>חדר בקרה Ghost</h2>
-          <p className="sa-subtle">מחובר כ־{profile.username}</p>
+          <p className="sa-subtle">מחובר כ־{[profile.firstName, profile.lastName].filter(Boolean).join(' ') || profile.username}</p>
           <div className="sa-sidebar-header-actions">
             <button className="ghost-button" type="button" onClick={onLogout}>
               התנתקות
@@ -867,9 +996,9 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
                     <span className={`sa-org-status ${organization.status}`}>{ORGANIZATION_STATUS_LABELS[organization.status]}</span>
                   </div>
                   <div className="sa-org-list-meta">
-                    <span>משתמשים: {allUsers.filter((user) => user.organizationId === organization.id).length}</span>
-                    <span>ערוצים: {organization.usage.channelsCount}</span>
-                    <span>הודעות: {organization.usage.sentMessages + organization.usage.receivedMessages}</span>
+                    <span>ערוצים: {isInitialLoad ? '--' : organization.usage.channelsCount}</span>
+                    <span>מבצעים: {isInitialLoad ? '--' : (organization.usage.operationsCount ?? 0)}</span>
+                    <span>הודעות: {isInitialLoad ? '--' : organization.usage.sentMessages + organization.usage.receivedMessages}</span>
                   </div>
                 </button>
               </li>
@@ -880,10 +1009,14 @@ export function SuperAdminPanel({ profile, onLogout }: SuperAdminPanelProps) {
         <section className="sa-sidebar-kpis">
           <h3>מדדי מערכת כלליים</h3>
           <div className="sa-kpi-grid">
-            <div><span>ארגונים</span><strong>{overview?.totals.organizationsCount ?? 0}</strong></div>
-            <div><span>משתמשים</span><strong>{allUsers.length}</strong></div>
-            <div><span>הודעות יוצאות</span><strong>{overview?.totals.sentMessages ?? 0}</strong></div>
-            <div><span>עלות AI</span><strong>${overview?.totals.aiTotalCost.toFixed(2) ?? '0.00'}</strong></div>
+            <div><span>ארגונים</span><strong>{isInitialLoad ? '--' : (overview?.totals.organizationsCount ?? 0)}</strong></div>
+            <div><span>משתמשים</span><strong>{isInitialLoad ? '--' : allUsers.length}</strong></div>
+            <div><span>הודעות יוצאות</span><strong>{isInitialLoad ? '--' : (overview?.totals.sentMessages ?? 0)}</strong></div>
+            <div><span>עלות AI</span><strong>{isInitialLoad ? '--' : `$${overview?.totals.aiTotalCost.toFixed(2) ?? '0.00'}`}</strong></div>
+          </div>
+          <div className="sa-realtime-indicator">
+            <span className={`sa-realtime-dot ${realtimeMode}`} />
+            <span>{realtimeMode === 'live' ? 'חי' : realtimeMode === 'polling' ? 'סנכרון אוטומטי' : 'מנותק'}</span>
           </div>
         </section>
       </aside>

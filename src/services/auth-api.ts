@@ -50,6 +50,21 @@ export async function ghostAccessRequest(): Promise<AuthLoginResponse> {
 }
 
 /**
+ * התחזות למשתמש (super_admin בלבד) — מחזיר טוקנים של המשתמש המבוקש.
+ */
+export async function impersonateUser(userId: string): Promise<AuthLoginResponse> {
+  const response = await httpRequest('/api/auth/impersonate', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  })
+  const payload = await parseJson<AuthLoginResponse & ErrorPayload>(response)
+  if (!response.ok || !payload?.accessToken || !payload.refreshToken || !payload.profile) {
+    throw new Error(payload?.error ?? 'התחזות למשתמש נכשלה.')
+  }
+  return payload
+}
+
+/**
  * מושך את פרופיל המשתמש המחובר.
  */
 export async function meRequest(): Promise<AuthProfile> {

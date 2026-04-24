@@ -84,6 +84,8 @@ export async function listUsers(): Promise<OrganizationUser[]> {
 export async function createUser(input: {
   organizationId: string
   username: string
+  firstName: string
+  lastName: string
   password: string
   role: 'system_manager' | 'regular_user'
   allowedChannelIds?: string[]
@@ -149,11 +151,11 @@ export async function revealPaymentCard(organizationId: string, managerCode: str
   )
 }
 
-export async function saveOrganizationOpenAiKey(organizationId: string, openAiApiKey: string) {
+export async function saveOrganizationAiKey(organizationId: string, aiApiKey: string) {
   return expectOk(
     await httpRequest('/api/admin/billing/openai-key', {
       method: 'PUT',
-      body: JSON.stringify({ organizationId, openAiApiKey }),
+      body: JSON.stringify({ organizationId, openAiApiKey: aiApiKey }),
     }),
   )
 }

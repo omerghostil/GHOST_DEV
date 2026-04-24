@@ -56,7 +56,7 @@ describe('LoginPage', () => {
     const icon = container.querySelector('img.login-brand-icon') as HTMLImageElement | null
 
     expect(icon).toBeTruthy()
-    expect(icon?.getAttribute('src')).toBe('/blackicon_whitebg.png')
+    expect(icon?.getAttribute('src')).toBe('/ghost-icon-128.png')
     expect(icon?.getAttribute('alt')).toBe('Ghost icon')
     unmount()
   })

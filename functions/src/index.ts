@@ -4,6 +4,7 @@ import { createApp } from '../../server/app'
 import { FirestoreAdminRepository } from '../../server/db/firestore/firestore-repository'
 import { FirebaseRealtimeHub } from '../../server/realtime/firebase-hub'
 import { ensureFirebaseBootstrapUser } from '../../server/auth/firebase-auth-service'
+import { ServerOperationScheduler } from '../../server/operations/operation-scheduler'
 
 process.env.FIREBASE_PROJECT_ID = 'ghost-prod-fc874'
 
@@ -22,14 +23,16 @@ function getApp(): Promise<ReturnType<typeof createApp>> {
   appPromise = (async () => {
     const store = new FirestoreAdminRepository()
     await store.initialize()
-    const bootstrapUsername = process.env.SUPER_ADMIN_USERNAME?.trim() || 'omer'
-    const bootstrapPassword = process.env.SUPER_ADMIN_PASSWORD?.trim() || 'ghostadmin8888'
+    const bootstrapUsername = process.env.SUPER_ADMIN_USERNAME?.trim() || 'omeradmin'
+    const bootstrapPassword = process.env.SUPER_ADMIN_PASSWORD?.trim() || 'omeradmin'
     try {
       await ensureFirebaseBootstrapUser(store, bootstrapUsername, bootstrapPassword)
     } catch (error) {
       console.warn('Firebase Auth bootstrap דילוג — משתמש bootstrap ייווצר עם hash מקומי.', error)
     }
     const realtimeHub = new FirebaseRealtimeHub()
+    const scheduler = new ServerOperationScheduler(store)
+    scheduler.start()
     return createApp(store, realtimeHub)
   })()
   return appPromise

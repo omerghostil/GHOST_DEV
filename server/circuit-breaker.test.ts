@@ -11,7 +11,7 @@ describe('CircuitBreaker', () => {
 
     await expect(breaker.execute(async () => Promise.reject(new Error('fail-1')))).rejects.toThrow('fail-1')
     await expect(breaker.execute(async () => Promise.reject(new Error('fail-2')))).rejects.toThrow('fail-2')
-    await expect(breaker.execute(async () => 'should-not-run')).rejects.toThrow('OPENAI_CIRCUIT_OPEN')
+    await expect(breaker.execute(async () => 'should-not-run')).rejects.toThrow('AI_CIRCUIT_OPEN')
 
     expect(breaker.getSnapshot().state).toBe('open')
   })

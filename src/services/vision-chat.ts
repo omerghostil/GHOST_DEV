@@ -64,7 +64,7 @@ export async function requestVisionReply(
       }
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         throw new Error(
-          'שירות הניתוח לא זמין (ה-proxy לא עונה או אין מפתח API). הרץ npm run dev — זה מפעיל את Vite ואת שרת ה-proxy על פורט 8787, והגדר OPENAI_API_KEY בקובץ .env.',
+          'שירות הניתוח לא זמין. ודא שהשרת רץ ושמפתח ה-API מוגדר כראוי.',
         )
       }
       throw new Error(`השרת לא הצליח לייצר תשובה (HTTP ${response.status}).`)

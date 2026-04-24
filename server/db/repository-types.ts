@@ -2,7 +2,11 @@ import type {
   AuditLogRecord,
   CampaignRecord,
   ChannelRecord,
+  FullChannelRecord,
   IssueRecord,
+  MessageRecord,
+  OperationRecord,
+  OperationRunRecord,
   OrganizationLimits,
   OrganizationRecord,
   PaymentCardRecord,
@@ -70,6 +74,8 @@ export interface IAdminRepository {
   createUser(input: {
     organizationId: string
     username: string
+    firstName?: string
+    lastName?: string
     firebaseUid?: string
     passwordHash: string
     role: UserRole
@@ -128,4 +134,37 @@ export interface IAdminRepository {
 
   /** יומן אירועי שימוש */
   addUsageEvent(input: Omit<UsageEventRecord, 'id' | 'createdAtIso'>): UsageEventRecord
+
+  /** ספירות אגרגטיביות מנתונים אמיתיים */
+  countFullChannels(organizationId: string): Promise<number>
+  countMessages(organizationId: string): Promise<number>
+  countMessagesByAuthor(organizationId: string): Promise<{ sent: number; received: number }>
+  countOperations(organizationId: string): Promise<number>
+
+  /** ערוצים עשירים פר ארגון */
+  listFullChannels(organizationId: string): Promise<FullChannelRecord[]>
+  getFullChannel(organizationId: string, channelId: string): Promise<FullChannelRecord | undefined>
+  createFullChannel(organizationId: string, data: Omit<FullChannelRecord, 'id' | 'organizationId' | 'createdAtIso' | 'updatedAtIso'>): Promise<FullChannelRecord>
+  updateChannelData(organizationId: string, channelId: string, fields: Partial<Omit<FullChannelRecord, 'id' | 'organizationId' | 'createdAtIso'>>): Promise<FullChannelRecord>
+  deleteFullChannel(organizationId: string, channelId: string): Promise<void>
+
+  /** הודעות פר משתמש + ערוץ */
+  addMessage(organizationId: string, userId: string, channelId: string, message: Omit<MessageRecord, 'id' | 'organizationId' | 'userId' | 'channelId' | 'createdAtIso'>): Promise<MessageRecord>
+  listMessages(organizationId: string, userId: string, channelId: string, opts?: { limit?: number; beforeIso?: string }): Promise<MessageRecord[]>
+
+  /** מבצעים (operations) פר ערוץ */
+  createChannelOperation(organizationId: string, channelId: string, op: Omit<OperationRecord, 'id' | 'organizationId' | 'channelId' | 'createdAtIso' | 'updatedAtIso'>): Promise<OperationRecord>
+  listChannelOperations(organizationId: string, channelId: string): Promise<OperationRecord[]>
+  updateChannelOperation(organizationId: string, channelId: string, opId: string, fields: Partial<Omit<OperationRecord, 'id' | 'organizationId' | 'channelId' | 'createdAtIso'>>): Promise<OperationRecord>
+  deleteChannelOperation(organizationId: string, channelId: string, opId: string): Promise<void>
+
+  /** כל המבצעים + היסטוריית הרצות פר ארגון */
+  listAllOperations(organizationId: string): Promise<OperationRecord[]>
+  listRecentOperationRuns(organizationId: string, limit?: number): Promise<OperationRunRecord[]>
+
+  /** Scheduler שרתי — ריצת מבצעים ברקע */
+  listRunnableOperations(): Promise<OperationRecord[]>
+  acquireOperationRunLock(organizationId: string, channelId: string, operationId: string): Promise<OperationRunRecord | null>
+  completeOperationRun(runId: string): Promise<OperationRunRecord>
+  failOperationRun(runId: string, errorCode: string, errorMessage: string): Promise<OperationRunRecord>
 }

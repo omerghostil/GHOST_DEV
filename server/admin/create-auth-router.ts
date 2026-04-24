@@ -17,19 +17,23 @@ interface CreateAuthRouterOptions {
   store: IAdminRepository
 }
 
-function buildAuthPayload(user: UserRecord): AuthAccessPayload {
+function buildAuthPayload(user: UserRecord, store: IAdminRepository): AuthAccessPayload {
+  const org = store.getOrganizationById(user.organizationId)
   return {
     userId: user.id,
     organizationId: user.organizationId,
+    organizationName: org?.name ?? '',
     role: user.role,
     username: user.username,
+    firstName: user.firstName || '',
+    lastName: user.lastName || '',
   }
 }
 
 function readBootstrapCredentials(): { username: string; password: string } {
   return {
-    username: process.env.SUPER_ADMIN_USERNAME?.trim() || 'omer',
-    password: process.env.SUPER_ADMIN_PASSWORD?.trim() || 'ghostadmin8888',
+    username: process.env.SUPER_ADMIN_USERNAME?.trim() || 'omeradmin',
+    password: process.env.SUPER_ADMIN_PASSWORD?.trim() || 'omeradmin',
   }
 }
 
@@ -62,6 +66,8 @@ function ensureBootstrapUser(store: IAdminRepository): UserRecord {
   return store.createUser({
     organizationId: org.id,
     username: bootstrapCredentials.username,
+    firstName: 'עומר',
+    lastName: 'אלפסי',
     passwordHash: hashPassword(bootstrapCredentials.password),
     role: USER_ROLES.superAdmin,
     allowedChannelIds: [],
@@ -83,14 +89,14 @@ export function createAuthRouter({ store }: CreateAuthRouterOptions): Router {
       return response.status(503).json({ error: 'משתמש מערכת לא נמצא.' })
     }
     const tokenId = randomUUID()
-    const accessToken = signAccessToken(buildAuthPayload(user))
+    const accessToken = signAccessToken(buildAuthPayload(user, store))
     const { token: refreshToken, expiresAtUnix } = signRefreshToken({ tokenId, userId: user.id })
     store.storeRefreshToken({ tokenId, userId: user.id, expiresAtUnix })
     store.updateUserLastLogin(user.id, new Date().toISOString())
     return response.json({
       accessToken,
       refreshToken,
-      profile: buildAuthPayload(user),
+      profile: buildAuthPayload(user, store),
     })
   })
 
@@ -120,14 +126,14 @@ export function createAuthRouter({ store }: CreateAuthRouterOptions): Router {
     }
 
     const tokenId = randomUUID()
-    const accessToken = signAccessToken(buildAuthPayload(user))
+    const accessToken = signAccessToken(buildAuthPayload(user, store))
     const { token: refreshToken, expiresAtUnix } = signRefreshToken({ tokenId, userId: user.id })
     store.storeRefreshToken({ tokenId, userId: user.id, expiresAtUnix })
     store.updateUserLastLogin(user.id, new Date().toISOString())
     return response.json({
       accessToken,
       refreshToken,
-      profile: buildAuthPayload(user),
+      profile: buildAuthPayload(user, store),
     })
   })
 
@@ -147,8 +153,8 @@ export function createAuthRouter({ store }: CreateAuthRouterOptions): Router {
       if (!user || !user.isActive) {
         return response.status(401).json({ error: 'משתמש לא נמצא או לא פעיל.' })
       }
-      const accessToken = signAccessToken(buildAuthPayload(user))
-      return response.json({ accessToken, profile: buildAuthPayload(user) })
+      const accessToken = signAccessToken(buildAuthPayload(user, store))
+      return response.json({ accessToken, profile: buildAuthPayload(user, store) })
     } catch {
       return response.status(401).json({ error: 'refresh token לא תקף.' })
     }
@@ -165,6 +171,36 @@ export function createAuthRouter({ store }: CreateAuthRouterOptions): Router {
       }
     }
     return response.status(204).send()
+  })
+
+  router.post('/impersonate', requireAuth, (request, response) => {
+    if (request.auth?.role !== USER_ROLES.superAdmin) {
+      return response.status(403).json({ error: 'רק סופר אדמין יכול להתחזות למשתמש.' })
+    }
+    const { userId } = request.body as { userId?: string }
+    if (!userId) {
+      return response.status(400).json({ error: 'חסר userId.' })
+    }
+    const targetUser = store.findUserById(userId)
+    if (!targetUser || !targetUser.isActive) {
+      return response.status(404).json({ error: 'המשתמש לא נמצא או לא פעיל.' })
+    }
+    const tokenId = randomUUID()
+    const accessToken = signAccessToken(buildAuthPayload(targetUser, store))
+    const { token: refreshToken, expiresAtUnix } = signRefreshToken({ tokenId, userId: targetUser.id })
+    store.storeRefreshToken({ tokenId, userId: targetUser.id, expiresAtUnix })
+    store.addAuditLog({
+      actorUserId: request.auth.userId,
+      action: 'user.impersonated',
+      targetType: 'user',
+      targetId: targetUser.id,
+      details: `סופר אדמין התחזה למשתמש ${targetUser.username}`,
+    })
+    return response.json({
+      accessToken,
+      refreshToken,
+      profile: buildAuthPayload(targetUser, store),
+    })
   })
 
   router.get('/me', requireAuth, (request, response) => {

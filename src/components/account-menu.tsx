@@ -12,16 +12,31 @@ const ACCOUNT_ITEMS = [
 
 type AccountItemId = typeof ACCOUNT_ITEMS[number]['id']
 
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: 'סופר אדמין',
+  system_manager: 'מנהל מערכת',
+  regular_user: 'משתמש',
+}
+
 interface AccountMenuProps {
+  fullName: string
+  organizationName: string
+  role: string
   onNotificationsClick?: () => void
   onLogout?: () => void
 }
 
+function getInitials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/)
+  if (parts.length === 0 || !parts[0]) return '??'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 /**
  * תפריט ניהול חשבון — dropdown עם ניווט מקלדת ו-click-outside.
- * נסגר גם ב-Escape.
  */
-export function AccountMenu({ onNotificationsClick, onLogout }: AccountMenuProps) {
+export function AccountMenu({ fullName, organizationName, role, onNotificationsClick, onLogout }: AccountMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -56,6 +71,8 @@ export function AccountMenu({ onNotificationsClick, onLogout }: AccountMenuProps
     }
   }
 
+  const initials = getInitials(fullName)
+  const roleLabel = ROLE_LABELS[role] ?? role
   const mainItems   = ACCOUNT_ITEMS.filter((item) => item.section === 'main')
   const devItems    = ACCOUNT_ITEMS.filter((item) => item.section === 'dev')
   const dangerItems = ACCOUNT_ITEMS.filter((item) => item.section === 'danger')
@@ -70,10 +87,10 @@ export function AccountMenu({ onNotificationsClick, onLogout }: AccountMenuProps
         onClick={() => setIsOpen((prev) => !prev)}
         type="button"
       >
-        <span className="account-avatar" aria-hidden>OA</span>
+        <span className="account-avatar" aria-hidden>{initials}</span>
         <span className="account-trigger-meta desktop-only">
-          <span className="account-trigger-name">עומר אלפסי</span>
-          <span className="account-trigger-role">Admin</span>
+          <span className="account-trigger-name">{fullName}</span>
+          <span className="account-trigger-role">{organizationName}</span>
         </span>
         <span className={`account-caret ${isOpen ? 'open' : ''}`} aria-hidden />
       </button>
@@ -81,11 +98,11 @@ export function AccountMenu({ onNotificationsClick, onLogout }: AccountMenuProps
       {isOpen && (
         <div className="account-dropdown" role="menu">
           <div className="account-dropdown-profile">
-            <span className="account-dropdown-avatar" aria-hidden>OA</span>
+            <span className="account-dropdown-avatar" aria-hidden>{initials}</span>
             <div className="account-dropdown-identity">
-              <strong>עומר אלפסי</strong>
-              <span>omer@ghost.io</span>
-              <span className="account-plan-badge">PRO</span>
+              <strong>{fullName}</strong>
+              <span>{roleLabel}</span>
+              <span className="account-plan-badge">{organizationName}</span>
             </div>
           </div>
 

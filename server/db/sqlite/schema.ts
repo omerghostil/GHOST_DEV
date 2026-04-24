@@ -3,7 +3,90 @@
  * מותאמת למעבר עתידי ל-Firebase Realtime + Firestore.
  */
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 4
+
+export const MIGRATE_V2_TO_V3_SQL = `
+ALTER TABLE organizations ADD COLUMN operations_count INTEGER NOT NULL DEFAULT 0;
+UPDATE schema_version SET version = 3;
+`
+
+export const MIGRATE_V3_TO_V4_SQL = `
+ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT '';
+UPDATE schema_version SET version = 4;
+`
+
+/** SQL מיגרציה מגרסה 1 לגרסה 2 — טבלאות ערוצים עשירים, הודעות, מבצעים והרצות. */
+export const MIGRATE_V1_TO_V2_SQL = `
+CREATE TABLE IF NOT EXISTS channel_data (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'personal' CHECK(type IN ('personal', 'group')),
+  subtitle TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  watch_scope TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  memory_interval INTEGER NOT NULL DEFAULT 30,
+  rtsp_feed TEXT NOT NULL DEFAULT 'rtsp://',
+  live_state TEXT NOT NULL DEFAULT 'LIVE' CHECK(live_state IN ('LIVE', 'SYNC', 'DEGRADED', 'OFFLINE')),
+  camera_enabled INTEGER NOT NULL DEFAULT 0,
+  linked_channel_ids TEXT NOT NULL DEFAULT '[]',
+  members TEXT NOT NULL DEFAULT '[]',
+  is_blocked INTEGER NOT NULL DEFAULT 0,
+  created_at_iso TEXT NOT NULL,
+  updated_at_iso TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  user_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  author TEXT NOT NULL CHECK(author IN ('user', 'ghost', 'system')),
+  text TEXT NOT NULL,
+  time TEXT NOT NULL,
+  alert_level TEXT,
+  score REAL,
+  frame_data_url TEXT,
+  sources TEXT,
+  created_at_iso TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS channel_operations (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  channel_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('alert', 'report', 'rating', 'assessment')),
+  schedule TEXT NOT NULL DEFAULT '24/7',
+  trigger_text TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL DEFAULT '',
+  model_override TEXT,
+  detail_level TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  parsed_schedule TEXT,
+  created_at_iso TEXT NOT NULL,
+  updated_at_iso TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS operation_runs (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  channel_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued', 'running', 'success', 'failed')),
+  started_at_iso TEXT NOT NULL,
+  ended_at_iso TEXT,
+  error_code TEXT,
+  error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_channel_data_organization ON channel_data(organization_id);
+CREATE INDEX IF NOT EXISTS idx_messages_org_user_channel ON messages(organization_id, user_id, channel_id, created_at_iso);
+CREATE INDEX IF NOT EXISTS idx_messages_org_channel ON messages(organization_id, channel_id);
+CREATE INDEX IF NOT EXISTS idx_channel_operations_org_channel ON channel_operations(organization_id, channel_id);
+CREATE INDEX IF NOT EXISTS idx_channel_operations_enabled ON channel_operations(enabled, organization_id);
+CREATE INDEX IF NOT EXISTS idx_operation_runs_operation ON operation_runs(operation_id, status);
+CREATE INDEX IF NOT EXISTS idx_operation_runs_org ON operation_runs(organization_id);
+UPDATE schema_version SET version = 2;
+`
 
 export const CREATE_TABLES_SQL = `
 -- גרסת סכימה לצורך מיגרציות
@@ -30,6 +113,7 @@ CREATE TABLE IF NOT EXISTS organizations (
   received_messages INTEGER NOT NULL DEFAULT 0,
   devices_count INTEGER NOT NULL DEFAULT 0,
   channels_count INTEGER NOT NULL DEFAULT 0,
+  operations_count INTEGER NOT NULL DEFAULT 0,
   ai_total_cost REAL NOT NULL DEFAULT 0,
   api_total_cost REAL NOT NULL DEFAULT 0,
   agents_total_cost REAL NOT NULL DEFAULT 0,
@@ -41,6 +125,8 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   organization_id TEXT NOT NULL REFERENCES organizations(id),
   username TEXT NOT NULL UNIQUE,
+  first_name TEXT NOT NULL DEFAULT '',
+  last_name TEXT NOT NULL DEFAULT '',
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('super_admin', 'system_manager', 'regular_user')),
   allowed_channel_ids TEXT NOT NULL DEFAULT '[]',
@@ -149,6 +235,74 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   expires_at_unix INTEGER NOT NULL
 );
 
+-- ערוצים עשירים פר ארגון
+CREATE TABLE IF NOT EXISTS channel_data (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'personal' CHECK(type IN ('personal', 'group')),
+  subtitle TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  watch_scope TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  memory_interval INTEGER NOT NULL DEFAULT 30,
+  rtsp_feed TEXT NOT NULL DEFAULT 'rtsp://',
+  live_state TEXT NOT NULL DEFAULT 'LIVE' CHECK(live_state IN ('LIVE', 'SYNC', 'DEGRADED', 'OFFLINE')),
+  camera_enabled INTEGER NOT NULL DEFAULT 0,
+  linked_channel_ids TEXT NOT NULL DEFAULT '[]',
+  members TEXT NOT NULL DEFAULT '[]',
+  is_blocked INTEGER NOT NULL DEFAULT 0,
+  created_at_iso TEXT NOT NULL,
+  updated_at_iso TEXT NOT NULL
+);
+
+-- הודעות פר משתמש + ערוץ + ארגון
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  user_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  author TEXT NOT NULL CHECK(author IN ('user', 'ghost', 'system')),
+  text TEXT NOT NULL,
+  time TEXT NOT NULL,
+  alert_level TEXT,
+  score REAL,
+  frame_data_url TEXT,
+  sources TEXT,
+  created_at_iso TEXT NOT NULL
+);
+
+-- מבצעים פר ערוץ + ארגון
+CREATE TABLE IF NOT EXISTS channel_operations (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  channel_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('alert', 'report', 'rating', 'assessment')),
+  schedule TEXT NOT NULL DEFAULT '24/7',
+  trigger_text TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL DEFAULT '',
+  model_override TEXT,
+  detail_level TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  parsed_schedule TEXT,
+  created_at_iso TEXT NOT NULL,
+  updated_at_iso TEXT NOT NULL
+);
+
+-- היסטוריית הרצות מבצעים (scheduler שרתי)
+CREATE TABLE IF NOT EXISTS operation_runs (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  channel_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued', 'running', 'success', 'failed')),
+  started_at_iso TEXT NOT NULL,
+  ended_at_iso TEXT,
+  error_code TEXT,
+  error_message TEXT
+);
+
 -- אינדקסים לשאילתות תכופות
 CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -163,4 +317,11 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_created ON usage_events(created_at_i
 CREATE INDEX IF NOT EXISTS idx_issues_organization ON issues(organization_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at_iso);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_channel_data_organization ON channel_data(organization_id);
+CREATE INDEX IF NOT EXISTS idx_messages_org_user_channel ON messages(organization_id, user_id, channel_id, created_at_iso);
+CREATE INDEX IF NOT EXISTS idx_messages_org_channel ON messages(organization_id, channel_id);
+CREATE INDEX IF NOT EXISTS idx_channel_operations_org_channel ON channel_operations(organization_id, channel_id);
+CREATE INDEX IF NOT EXISTS idx_channel_operations_enabled ON channel_operations(enabled, organization_id);
+CREATE INDEX IF NOT EXISTS idx_operation_runs_operation ON operation_runs(operation_id, status);
+CREATE INDEX IF NOT EXISTS idx_operation_runs_org ON operation_runs(organization_id);
 `

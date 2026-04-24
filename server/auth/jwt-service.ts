@@ -7,8 +7,11 @@ const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7
 export interface AuthAccessPayload {
   userId: string
   organizationId: string
+  organizationName: string
   role: UserRole
   username: string
+  firstName: string
+  lastName: string
 }
 
 export interface RefreshPayload {

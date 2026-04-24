@@ -5,8 +5,11 @@ import type { UserRole } from '../admin/types'
 export interface RequestAuthContext {
   userId: string
   organizationId: string
+  organizationName: string
   role: UserRole
   username: string
+  firstName: string
+  lastName: string
 }
 
 declare module 'express-serve-static-core' {

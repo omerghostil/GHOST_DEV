@@ -45,7 +45,7 @@ function resolveOpenAiClient(apiKey?: string): OpenAI | null {
 
 function throwIfOpenAiUnavailable(client: OpenAI | null) {
   if (!client) {
-    throw new Error('OPENAI_API_KEY לא הוגדר בסביבה.')
+    throw new Error('מפתח AI לא הוגדר בסביבה.')
   }
 }
 

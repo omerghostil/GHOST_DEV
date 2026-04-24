@@ -5,7 +5,12 @@ import type {
   AuditLogRecord,
   CampaignRecord,
   ChannelRecord,
+  FullChannelRecord,
   IssueRecord,
+  MessageRecord,
+  OperationRecord,
+  OperationRunRecord,
+  OperationRunStatus,
   OrganizationLimits,
   OrganizationRecord,
   OrganizationUsage,
@@ -147,6 +152,7 @@ export class FirestoreAdminRepository implements IAdminRepository {
           receivedMessages: 0,
           devicesCount: 0,
           channelsCount: 0,
+          operationsCount: 0,
           aiTotalCost: 0,
           apiTotalCost: 0,
           agentsTotalCost: 0,
@@ -190,6 +196,8 @@ export class FirestoreAdminRepository implements IAdminRepository {
   createUser(input: {
     organizationId: string
     username: string
+    firstName?: string
+    lastName?: string
     firebaseUid?: string
     passwordHash: string
     role: UserRole
@@ -199,7 +207,7 @@ export class FirestoreAdminRepository implements IAdminRepository {
     return this.run(() => {
       const id = randomUUID()
       const nowIso = new Date().toISOString()
-      const user: UserRecord = { ...input, id, isActive: true, createdAtIso: nowIso, updatedAtIso: nowIso }
+      const user: UserRecord = { ...input, firstName: input.firstName ?? '', lastName: input.lastName ?? '', id, isActive: true, createdAtIso: nowIso, updatedAtIso: nowIso }
       this.cache.users.set(id, user)
       const firestoreData = Object.fromEntries(Object.entries(user).filter(([, v]) => v !== undefined))
       void adminDb.collection(COLLECTIONS.users).doc(id).set(firestoreData)
@@ -468,5 +476,272 @@ export class FirestoreAdminRepository implements IAdminRepository {
         void adminDb.collection(COLLECTIONS.refreshTokens).doc(tokenId).delete()
       })
     })
+  }
+
+  /* ============================= ספירות אגרגטיביות ============================= */
+
+  async countFullChannels(organizationId: string): Promise<number> {
+    const snap = await this.channelDataCol(organizationId).count().get()
+    return snap.data().count
+  }
+
+  async countMessages(organizationId: string): Promise<number> {
+    const usersSnap = await adminDb
+      .collection(COLLECTIONS.organizations).doc(organizationId)
+      .collection('users').get()
+    let total = 0
+    for (const userDoc of usersSnap.docs) {
+      const channelsSnap = await adminDb
+        .collection(COLLECTIONS.organizations).doc(organizationId)
+        .collection('users').doc(userDoc.id)
+        .collection('channel_data').get()
+      for (const chDoc of channelsSnap.docs) {
+        const msgSnap = await adminDb
+          .collection(COLLECTIONS.organizations).doc(organizationId)
+          .collection('users').doc(userDoc.id)
+          .collection('channel_data').doc(chDoc.id)
+          .collection('messages').count().get()
+        total += msgSnap.data().count
+      }
+    }
+    return total
+  }
+
+  async countMessagesByAuthor(organizationId: string): Promise<{ sent: number; received: number }> {
+    const usersSnap = await adminDb
+      .collection(COLLECTIONS.organizations).doc(organizationId)
+      .collection('users').get()
+    let sent = 0
+    let received = 0
+    for (const userDoc of usersSnap.docs) {
+      const channelsSnap = await adminDb
+        .collection(COLLECTIONS.organizations).doc(organizationId)
+        .collection('users').doc(userDoc.id)
+        .collection('channel_data').get()
+      for (const chDoc of channelsSnap.docs) {
+        const msgCol = adminDb
+          .collection(COLLECTIONS.organizations).doc(organizationId)
+          .collection('users').doc(userDoc.id)
+          .collection('channel_data').doc(chDoc.id)
+          .collection('messages')
+        const sentSnap = await msgCol.where('author', '==', 'user').count().get()
+        sent += sentSnap.data().count
+        const allSnap = await msgCol.count().get()
+        received += allSnap.data().count - sentSnap.data().count
+      }
+    }
+    return { sent, received }
+  }
+
+  async countOperations(organizationId: string): Promise<number> {
+    const channelsSnap = await this.channelDataCol(organizationId).get()
+    let total = 0
+    for (const chDoc of channelsSnap.docs) {
+      const opsSnap = await this.operationsCol(organizationId, chDoc.id).count().get()
+      total += opsSnap.data().count
+    }
+    return total
+  }
+
+  /* ============================= ערוצים עשירים (מקוננים) ============================= */
+
+  private channelDataCol(orgId: string) {
+    return adminDb.collection(COLLECTIONS.organizations).doc(orgId).collection('channel_data')
+  }
+
+  async listFullChannels(organizationId: string): Promise<FullChannelRecord[]> {
+    const snap = await this.channelDataCol(organizationId).orderBy('createdAtIso', 'desc').get()
+    return snap.docs.map((doc) => doc.data() as FullChannelRecord)
+  }
+
+  async getFullChannel(organizationId: string, channelId: string): Promise<FullChannelRecord | undefined> {
+    const snap = await this.channelDataCol(organizationId).doc(channelId).get()
+    return snap.exists ? (snap.data() as FullChannelRecord) : undefined
+  }
+
+  async createFullChannel(
+    organizationId: string,
+    data: Omit<FullChannelRecord, 'id' | 'organizationId' | 'createdAtIso' | 'updatedAtIso'>,
+  ): Promise<FullChannelRecord> {
+    const id = randomUUID()
+    const nowIso = new Date().toISOString()
+    const record: FullChannelRecord = {
+      ...data, id, organizationId, createdAtIso: nowIso, updatedAtIso: nowIso,
+    }
+    await this.channelDataCol(organizationId).doc(id).set(record)
+    return record
+  }
+
+  async updateChannelData(
+    organizationId: string,
+    channelId: string,
+    fields: Partial<Omit<FullChannelRecord, 'id' | 'organizationId' | 'createdAtIso'>>,
+  ): Promise<FullChannelRecord> {
+    const nowIso = new Date().toISOString()
+    const update = { ...fields, updatedAtIso: nowIso }
+    await this.channelDataCol(organizationId).doc(channelId).update(update)
+    const snap = await this.channelDataCol(organizationId).doc(channelId).get()
+    return snap.data() as FullChannelRecord
+  }
+
+  async deleteFullChannel(organizationId: string, channelId: string): Promise<void> {
+    await this.channelDataCol(organizationId).doc(channelId).delete()
+  }
+
+  /* ============================= הודעות (פר משתמש, מקוננות) ============================= */
+
+  private messagesCol(orgId: string, userId: string, channelId: string) {
+    return adminDb
+      .collection(COLLECTIONS.organizations).doc(orgId)
+      .collection('users').doc(userId)
+      .collection('channel_data').doc(channelId)
+      .collection('messages')
+  }
+
+  async addMessage(
+    organizationId: string,
+    userId: string,
+    channelId: string,
+    message: Omit<MessageRecord, 'id' | 'organizationId' | 'userId' | 'channelId' | 'createdAtIso'>,
+  ): Promise<MessageRecord> {
+    const id = randomUUID()
+    const createdAtIso = new Date().toISOString()
+    const record: MessageRecord = {
+      ...message, id, organizationId, userId, channelId, createdAtIso,
+    }
+    const data = Object.fromEntries(Object.entries(record).filter(([, v]) => v !== undefined))
+    await this.messagesCol(organizationId, userId, channelId).doc(id).set(data)
+    return record
+  }
+
+  async listMessages(
+    organizationId: string,
+    userId: string,
+    channelId: string,
+    opts?: { limit?: number; beforeIso?: string },
+  ): Promise<MessageRecord[]> {
+    let query = this.messagesCol(organizationId, userId, channelId).orderBy('createdAtIso', 'asc')
+    if (opts?.beforeIso) {
+      query = query.where('createdAtIso', '<', opts.beforeIso)
+    }
+    query = query.limit(opts?.limit ?? 200)
+    const snap = await query.get()
+    return snap.docs.map((doc) => doc.data() as MessageRecord)
+  }
+
+  /* ============================= מבצעים פר ערוץ (מקוננים) ============================= */
+
+  private operationsCol(orgId: string, channelId: string) {
+    return this.channelDataCol(orgId).doc(channelId).collection('operations')
+  }
+
+  async createChannelOperation(
+    organizationId: string,
+    channelId: string,
+    op: Omit<OperationRecord, 'id' | 'organizationId' | 'channelId' | 'createdAtIso' | 'updatedAtIso'>,
+  ): Promise<OperationRecord> {
+    const id = randomUUID()
+    const nowIso = new Date().toISOString()
+    const record: OperationRecord = {
+      ...op, id, organizationId, channelId, createdAtIso: nowIso, updatedAtIso: nowIso,
+    }
+    const data = Object.fromEntries(Object.entries(record).filter(([, v]) => v !== undefined))
+    await this.operationsCol(organizationId, channelId).doc(id).set(data)
+    return record
+  }
+
+  async listChannelOperations(organizationId: string, channelId: string): Promise<OperationRecord[]> {
+    const snap = await this.operationsCol(organizationId, channelId).orderBy('createdAtIso', 'desc').get()
+    return snap.docs.map((doc) => doc.data() as OperationRecord)
+  }
+
+  async updateChannelOperation(
+    organizationId: string,
+    channelId: string,
+    opId: string,
+    fields: Partial<Omit<OperationRecord, 'id' | 'organizationId' | 'channelId' | 'createdAtIso'>>,
+  ): Promise<OperationRecord> {
+    const nowIso = new Date().toISOString()
+    const update = Object.fromEntries(
+      Object.entries({ ...fields, updatedAtIso: nowIso }).filter(([, v]) => v !== undefined),
+    )
+    await this.operationsCol(organizationId, channelId).doc(opId).update(update)
+    const snap = await this.operationsCol(organizationId, channelId).doc(opId).get()
+    return snap.data() as OperationRecord
+  }
+
+  async deleteChannelOperation(organizationId: string, channelId: string, opId: string): Promise<void> {
+    await this.operationsCol(organizationId, channelId).doc(opId).delete()
+  }
+
+  /* ============================= מבצעים + הרצות פר ארגון ============================= */
+
+  async listAllOperations(organizationId: string): Promise<OperationRecord[]> {
+    const channelsSnap = await this.channelDataCol(organizationId).get()
+    const results: OperationRecord[] = []
+    for (const chDoc of channelsSnap.docs) {
+      const opsSnap = await this.operationsCol(organizationId, chDoc.id).orderBy('createdAtIso', 'desc').get()
+      for (const opDoc of opsSnap.docs) {
+        results.push(opDoc.data() as OperationRecord)
+      }
+    }
+    return results
+  }
+
+  async listRecentOperationRuns(organizationId: string, limit = 50): Promise<OperationRunRecord[]> {
+    const channelsSnap = await this.channelDataCol(organizationId).get()
+    const allRuns: OperationRunRecord[] = []
+    for (const chDoc of channelsSnap.docs) {
+      const runsSnap = await this.channelDataCol(organizationId).doc(chDoc.id)
+        .collection('operation_runs').orderBy('startedAtIso', 'desc').limit(limit).get()
+      for (const runDoc of runsSnap.docs) {
+        allRuns.push(runDoc.data() as OperationRunRecord)
+      }
+    }
+    return allRuns.sort((a, b) => b.startedAtIso.localeCompare(a.startedAtIso)).slice(0, limit)
+  }
+
+  /* ============================= Scheduler — הרצות מבצעים ============================= */
+
+  async listRunnableOperations(): Promise<OperationRecord[]> {
+    const orgsSnap = await adminDb.collection(COLLECTIONS.organizations).get()
+    const results: OperationRecord[] = []
+    for (const orgDoc of orgsSnap.docs) {
+      const channelsSnap = await this.channelDataCol(orgDoc.id).get()
+      for (const chDoc of channelsSnap.docs) {
+        const opsSnap = await this.operationsCol(orgDoc.id, chDoc.id)
+          .where('enabled', '==', true).get()
+        for (const opDoc of opsSnap.docs) {
+          const op = opDoc.data() as OperationRecord
+          if (op.parsedSchedule) results.push(op)
+        }
+      }
+    }
+    return results
+  }
+
+  async acquireOperationRunLock(organizationId: string, channelId: string, operationId: string): Promise<OperationRunRecord | null> {
+    const id = randomUUID()
+    const nowIso = new Date().toISOString()
+    const record: OperationRunRecord = {
+      id, organizationId, channelId, operationId,
+      status: 'running' as OperationRunStatus, startedAtIso: nowIso,
+    }
+    await this.channelDataCol(organizationId).doc(channelId)
+      .collection('operation_runs').doc(id).set(record)
+    return record
+  }
+
+  async completeOperationRun(runId: string): Promise<OperationRunRecord> {
+    const nowIso = new Date().toISOString()
+    return { id: runId, status: 'success' as OperationRunStatus, endedAtIso: nowIso } as OperationRunRecord
+  }
+
+  async failOperationRun(runId: string, errorCode: string, errorMessage: string): Promise<OperationRunRecord> {
+    const nowIso = new Date().toISOString()
+    return {
+      id: runId, status: 'failed' as OperationRunStatus,
+      endedAtIso: nowIso, errorCode, errorMessage,
+    } as OperationRunRecord
   }
 }

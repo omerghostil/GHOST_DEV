@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, SyntheticEvent } from 'react'
 import './login-page.css'
 
-const GHOST_ACCESS_KEY = 'g'
-const GHOST_ACCESS_HOLD_MS = 8_000
+const GHOST_ACCESS_COMBO = new Set(['g', 'a', 'p'])
 
 export interface LoginPageProps {
   onAuthenticate: (user: string, passkey: string) => Promise<boolean> | boolean
@@ -41,33 +40,35 @@ const LOGIN_INTEL_LINES: LoginIntelLine[] = [
  */
 export function LoginPage({ onAuthenticate, onGhostAccess, externalErrorMessage }: LoginPageProps) {
   const [errorMessage, setErrorMessage] = useState('')
-  const ghostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pressedKeysRef = useRef(new Set<string>())
+  const firedRef = useRef(false)
 
   useEffect(() => {
     if (!onGhostAccess) {
       return
     }
 
+    function checkCombo() {
+      if (firedRef.current) return
+      for (const k of GHOST_ACCESS_COMBO) {
+        if (!pressedKeysRef.current.has(k)) return
+      }
+      firedRef.current = true
+      onGhostAccess!()
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key.toLowerCase() !== GHOST_ACCESS_KEY || event.repeat) {
-        return
-      }
-      if (ghostTimerRef.current) {
-        return
-      }
-      ghostTimerRef.current = setTimeout(() => {
-        onGhostAccess!()
-        ghostTimerRef.current = null
-      }, GHOST_ACCESS_HOLD_MS)
+      const key = event.key.toLowerCase()
+      if (!GHOST_ACCESS_COMBO.has(key)) return
+      pressedKeysRef.current.add(key)
+      checkCombo()
     }
 
     function handleKeyUp(event: KeyboardEvent) {
-      if (event.key.toLowerCase() !== GHOST_ACCESS_KEY) {
-        return
-      }
-      if (ghostTimerRef.current) {
-        clearTimeout(ghostTimerRef.current)
-        ghostTimerRef.current = null
+      const key = event.key.toLowerCase()
+      pressedKeysRef.current.delete(key)
+      if (pressedKeysRef.current.size === 0) {
+        firedRef.current = false
       }
     }
 
@@ -76,15 +77,12 @@ export function LoginPage({ onAuthenticate, onGhostAccess, externalErrorMessage 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
-      if (ghostTimerRef.current) {
-        clearTimeout(ghostTimerRef.current)
-      }
     }
   }, [onGhostAccess])
 
   function fallbackToFavicon(event: SyntheticEvent<HTMLImageElement>) {
     event.currentTarget.onerror = null
-    event.currentTarget.src = '/favicon.svg'
+    event.currentTarget.src = '/favicon-64.png'
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -133,7 +131,7 @@ export function LoginPage({ onAuthenticate, onGhostAccess, externalErrorMessage 
             decoding="async"
             loading="eager"
             onError={fallbackToFavicon}
-            src="/blackicon_whitebg.png"
+            src="/ghost-icon-128.png"
           />
           <p className="login-eyebrow">Secure Access</p>
           <h1 className="login-title">Sign In</h1>

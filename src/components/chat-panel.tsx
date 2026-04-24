@@ -98,7 +98,12 @@ export function ChatPanel({
         </div>
 
         <div className="chat-title-block">
-          <div className="title-cluster">
+          <button
+            aria-label="פתיחת פאנל פרטי ערוץ"
+            className="title-cluster"
+            onClick={onShowDetails}
+            type="button"
+          >
             {selectedChannel.lastFrameDataUrl ? (
               <img
                 className="channel-badge channel-badge-image"
@@ -108,11 +113,11 @@ export function ChatPanel({
             ) : (
               <div className="channel-badge">{selectedChannel.type === 'group' ? 'קבוצה' : 'ערוץ'}</div>
             )}
-            <div>
-              <p className="route">{selectedChannel.location}</p>
+            <div className="title-cluster-text">
               <h2>{selectedChannel.name}</h2>
+              <p className="route">{selectedChannel.location}</p>
             </div>
-          </div>
+          </button>
           <div className="live-status">
             <StatusDot liveState={selectedChannel.liveState} className="live-dot" />
             <span>{`${selectedChannel.liveState} · ${statusLabel}`}</span>

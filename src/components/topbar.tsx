@@ -2,6 +2,9 @@ import { useRef, useState } from 'react'
 import { AccountMenu } from './account-menu'
 
 interface TopbarProps {
+  fullName: string
+  organizationName: string
+  role: string
   channelsCount: number
   totalOperations: number
   totalLiveFeeds: number
@@ -126,6 +129,9 @@ function HelpIcon() {
 }
 
 export function Topbar({
+  fullName,
+  organizationName,
+  role,
   channelsCount,
   totalOperations,
   totalLiveFeeds,
@@ -143,11 +149,11 @@ export function Topbar({
       <div className="topbar-brand">
         <img
           className="brand-mark"
-          src="/blackicon_whitebg.png"
+          src="/ghost-icon-128.png"
           alt="Ghost"
           onError={(event) => {
             event.currentTarget.onerror = null
-            event.currentTarget.src = '/favicon.svg'
+            event.currentTarget.src = '/favicon-64.png'
           }}
         />
       </div>
@@ -234,7 +240,7 @@ export function Topbar({
 
         <div className="topbar-actions-divider" />
 
-        <AccountMenu onLogout={onLogout} onNotificationsClick={onOpenNotificationsCenter} />
+        <AccountMenu fullName={fullName} organizationName={organizationName} role={role} onLogout={onLogout} onNotificationsClick={onOpenNotificationsCenter} />
       </div>
     </header>
   )

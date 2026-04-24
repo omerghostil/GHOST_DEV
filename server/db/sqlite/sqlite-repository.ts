@@ -6,7 +6,12 @@ import type {
   AuditLogRecord,
   CampaignRecord,
   ChannelRecord,
+  FullChannelRecord,
   IssueRecord,
+  MessageRecord,
+  OperationRecord,
+  OperationRunRecord,
+  OperationRunStatus,
   OrganizationLimits,
   OrganizationRecord,
   OrganizationUsage,
@@ -22,7 +27,7 @@ import type {
   IAdminRepository,
   UsageEventRecord,
 } from '../repository-types'
-import { CREATE_TABLES_SQL, SCHEMA_VERSION } from './schema'
+import { CREATE_TABLES_SQL, MIGRATE_V1_TO_V2_SQL, MIGRATE_V2_TO_V3_SQL, MIGRATE_V3_TO_V4_SQL, SCHEMA_VERSION } from './schema'
 
 /** נתיב ברירת מחדל לקובץ DB לפי סביבה */
 function resolveDbPath(): string {
@@ -50,6 +55,7 @@ interface OrganizationRow {
   received_messages: number
   devices_count: number
   channels_count: number
+  operations_count: number
   ai_total_cost: number
   api_total_cost: number
   agents_total_cost: number
@@ -60,6 +66,8 @@ interface UserRow {
   id: string
   organization_id: string
   username: string
+  first_name: string
+  last_name: string
   password_hash: string
   role: string
   allowed_channel_ids: string
@@ -158,6 +166,70 @@ interface RefreshTokenRow {
   expires_at_unix: number
 }
 
+interface FullChannelRow {
+  id: string
+  organization_id: string
+  name: string
+  type: string
+  subtitle: string
+  location: string
+  watch_scope: string
+  description: string
+  memory_interval: number
+  rtsp_feed: string
+  live_state: string
+  camera_enabled: number
+  linked_channel_ids: string
+  members: string
+  is_blocked: number
+  created_at_iso: string
+  updated_at_iso: string
+}
+
+interface MessageRow {
+  id: string
+  organization_id: string
+  user_id: string
+  channel_id: string
+  author: string
+  text: string
+  time: string
+  alert_level: string | null
+  score: number | null
+  frame_data_url: string | null
+  sources: string | null
+  created_at_iso: string
+}
+
+interface OperationRow {
+  id: string
+  organization_id: string
+  channel_id: string
+  name: string
+  mode: string
+  schedule: string
+  trigger_text: string
+  action: string
+  model_override: string | null
+  detail_level: string | null
+  enabled: number
+  parsed_schedule: string | null
+  created_at_iso: string
+  updated_at_iso: string
+}
+
+interface OperationRunRow {
+  id: string
+  organization_id: string
+  channel_id: string
+  operation_id: string
+  status: string
+  started_at_iso: string
+  ended_at_iso: string | null
+  error_code: string | null
+  error_message: string | null
+}
+
 function rowToOrganization(row: OrganizationRow): OrganizationRecord {
   return {
     id: row.id,
@@ -180,6 +252,7 @@ function rowToOrganization(row: OrganizationRow): OrganizationRecord {
       receivedMessages: row.received_messages,
       devicesCount: row.devices_count,
       channelsCount: row.channels_count,
+      operationsCount: row.operations_count,
       aiTotalCost: row.ai_total_cost,
       apiTotalCost: row.api_total_cost,
       agentsTotalCost: row.agents_total_cost,
@@ -193,6 +266,8 @@ function rowToUser(row: UserRow): UserRecord {
     id: row.id,
     organizationId: row.organization_id,
     username: row.username,
+    firstName: row.first_name || '',
+    lastName: row.last_name || '',
     passwordHash: row.password_hash,
     role: row.role as UserRole,
     allowedChannelIds: JSON.parse(row.allowed_channel_ids) as string[],
@@ -302,6 +377,77 @@ function rowToAuditLog(row: AuditLogRow): AuditLogRecord {
   }
 }
 
+function rowToFullChannel(row: FullChannelRow): FullChannelRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    name: row.name,
+    type: row.type as FullChannelRecord['type'],
+    subtitle: row.subtitle,
+    location: row.location,
+    watchScope: row.watch_scope,
+    description: row.description,
+    memoryInterval: row.memory_interval,
+    rtspFeed: row.rtsp_feed,
+    liveState: row.live_state as FullChannelRecord['liveState'],
+    cameraEnabled: row.camera_enabled === 1,
+    linkedChannelIds: JSON.parse(row.linked_channel_ids) as string[],
+    members: JSON.parse(row.members) as string[],
+    isBlocked: row.is_blocked === 1,
+    createdAtIso: row.created_at_iso,
+    updatedAtIso: row.updated_at_iso,
+  }
+}
+
+function rowToMessage(row: MessageRow): MessageRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    userId: row.user_id,
+    channelId: row.channel_id,
+    author: row.author as MessageRecord['author'],
+    text: row.text,
+    time: row.time,
+    alertLevel: (row.alert_level as MessageRecord['alertLevel']) ?? undefined,
+    score: row.score ?? undefined,
+    frameDataUrl: row.frame_data_url ?? undefined,
+    sources: row.sources ? (JSON.parse(row.sources) as string[]) : undefined,
+    createdAtIso: row.created_at_iso,
+  }
+}
+
+function rowToOperation(row: OperationRow): OperationRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    channelId: row.channel_id,
+    name: row.name,
+    mode: row.mode as OperationRecord['mode'],
+    schedule: row.schedule,
+    trigger: row.trigger_text,
+    action: row.action,
+    modelOverride: (row.model_override as OperationRecord['modelOverride']) ?? undefined,
+    detailLevel: (row.detail_level as OperationRecord['detailLevel']) ?? undefined,
+    enabled: row.enabled === 1,
+    parsedSchedule: row.parsed_schedule ? (JSON.parse(row.parsed_schedule) as Record<string, unknown>) : undefined,
+    createdAtIso: row.created_at_iso,
+    updatedAtIso: row.updated_at_iso,
+  }
+}
+
+function rowToOperationRun(row: OperationRunRow): OperationRunRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    channelId: row.channel_id,
+    operationId: row.operation_id,
+    status: row.status as OperationRunStatus,
+    startedAtIso: row.started_at_iso,
+    endedAtIso: row.ended_at_iso ?? undefined,
+    errorCode: row.error_code ?? undefined,
+    errorMessage: row.error_message ?? undefined,
+  }
+}
 
 /**
  * מימוש SQLite מלא ל-IAdminRepository.
@@ -327,6 +473,16 @@ export class SQLiteAdminRepository implements IAdminRepository {
     if (versionRow === null) {
       this.db.exec(CREATE_TABLES_SQL)
       this.db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION)
+    } else if (versionRow < SCHEMA_VERSION) {
+      if (versionRow < 2) {
+        this.db.exec(MIGRATE_V1_TO_V2_SQL)
+      }
+      if (versionRow < 3) {
+        this.db.exec(MIGRATE_V2_TO_V3_SQL)
+      }
+      if (versionRow < 4) {
+        this.db.exec(MIGRATE_V3_TO_V4_SQL)
+      }
     }
   }
 
@@ -402,7 +558,7 @@ export class SQLiteAdminRepository implements IAdminRepository {
           encrypted_openai_api_key = ?, openai_usage_usd = ?, openai_last_sync_iso = ?,
           max_channels = ?, max_messages_per_channel_per_month = ?, monthly_charge_amount = ?,
           max_agents_total_cost = ?, max_ai_total_cost = ?, max_api_total_cost = ?,
-          sent_messages = ?, received_messages = ?, devices_count = ?, channels_count = ?,
+          sent_messages = ?, received_messages = ?, devices_count = ?, channels_count = ?, operations_count = ?,
           ai_total_cost = ?, api_total_cost = ?, agents_total_cost = ?, usage_updated_at_iso = ?
         WHERE id = ?`,
       )
@@ -423,6 +579,7 @@ export class SQLiteAdminRepository implements IAdminRepository {
         updated.usage.receivedMessages,
         updated.usage.devicesCount,
         updated.usage.channelsCount,
+        updated.usage.operationsCount,
         updated.usage.aiTotalCost,
         updated.usage.apiTotalCost,
         updated.usage.agentsTotalCost,
@@ -460,6 +617,8 @@ export class SQLiteAdminRepository implements IAdminRepository {
   createUser(input: {
     organizationId: string
     username: string
+    firstName?: string
+    lastName?: string
     firebaseUid?: string
     passwordHash: string
     role: UserRole
@@ -471,15 +630,17 @@ export class SQLiteAdminRepository implements IAdminRepository {
     this.db
       .prepare(
         `INSERT INTO users (
-          id, organization_id, username, password_hash, role,
+          id, organization_id, username, first_name, last_name, password_hash, role,
           allowed_channel_ids, blocked_channel_ids, is_active,
           created_at_iso, updated_at_iso
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       )
       .run(
         id,
         input.organizationId,
         input.username,
+        input.firstName ?? '',
+        input.lastName ?? '',
         input.passwordHash,
         input.role,
         JSON.stringify(input.allowedChannelIds),
@@ -499,7 +660,8 @@ export class SQLiteAdminRepository implements IAdminRepository {
     this.db
       .prepare(
         `UPDATE users SET
-          organization_id = ?, username = ?, password_hash = ?, role = ?,
+          organization_id = ?, username = ?, first_name = ?, last_name = ?,
+          password_hash = ?, role = ?,
           allowed_channel_ids = ?, blocked_channel_ids = ?,
           is_active = ?, updated_at_iso = ?, last_login_at_iso = ?
         WHERE id = ?`,
@@ -507,6 +669,8 @@ export class SQLiteAdminRepository implements IAdminRepository {
       .run(
         updated.organizationId,
         updated.username,
+        updated.firstName || '',
+        updated.lastName || '',
         updated.passwordHash,
         updated.role,
         JSON.stringify(updated.allowedChannelIds),
@@ -835,5 +999,303 @@ export class SQLiteAdminRepository implements IAdminRepository {
 
   purgeExpiredRefreshTokens(nowUnix = Math.floor(Date.now() / 1000)): void {
     this.db.prepare('DELETE FROM refresh_tokens WHERE expires_at_unix <= ?').run(nowUnix)
+  }
+
+  /* ============================= ספירות אגרגטיביות ============================= */
+
+  async countFullChannels(organizationId: string): Promise<number> {
+    const row = this.db.prepare('SELECT COUNT(*) AS cnt FROM channel_data WHERE organization_id = ?').get(organizationId) as { cnt: number }
+    return row.cnt
+  }
+
+  async countMessages(organizationId: string): Promise<number> {
+    const row = this.db.prepare('SELECT COUNT(*) AS cnt FROM messages WHERE organization_id = ?').get(organizationId) as { cnt: number }
+    return row.cnt
+  }
+
+  async countMessagesByAuthor(organizationId: string): Promise<{ sent: number; received: number }> {
+    const rows = this.db.prepare(
+      `SELECT
+        SUM(CASE WHEN author = 'user' THEN 1 ELSE 0 END) AS sent,
+        SUM(CASE WHEN author != 'user' THEN 1 ELSE 0 END) AS received
+       FROM messages WHERE organization_id = ?`,
+    ).get(organizationId) as { sent: number | null; received: number | null }
+    return { sent: rows.sent ?? 0, received: rows.received ?? 0 }
+  }
+
+  async countOperations(organizationId: string): Promise<number> {
+    const row = this.db.prepare('SELECT COUNT(*) AS cnt FROM channel_operations WHERE organization_id = ?').get(organizationId) as { cnt: number }
+    return row.cnt
+  }
+
+  /* ============================= ערוצים עשירים ============================= */
+
+  async listFullChannels(organizationId: string): Promise<FullChannelRecord[]> {
+    return (
+      this.db.prepare('SELECT * FROM channel_data WHERE organization_id = ? ORDER BY created_at_iso DESC').all(organizationId) as FullChannelRow[]
+    ).map(rowToFullChannel)
+  }
+
+  async getFullChannel(organizationId: string, channelId: string): Promise<FullChannelRecord | undefined> {
+    const row = this.db
+      .prepare('SELECT * FROM channel_data WHERE id = ? AND organization_id = ?')
+      .get(channelId, organizationId) as FullChannelRow | undefined
+    return row ? rowToFullChannel(row) : undefined
+  }
+
+  async createFullChannel(
+    organizationId: string,
+    data: Omit<FullChannelRecord, 'id' | 'organizationId' | 'createdAtIso' | 'updatedAtIso'>,
+  ): Promise<FullChannelRecord> {
+    const id = randomUUID()
+    const nowIso = new Date().toISOString()
+    this.db
+      .prepare(
+        `INSERT INTO channel_data (
+          id, organization_id, name, type, subtitle, location, watch_scope,
+          description, memory_interval, rtsp_feed, live_state, camera_enabled,
+          linked_channel_ids, members, is_blocked, created_at_iso, updated_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id, organizationId, data.name, data.type, data.subtitle, data.location,
+        data.watchScope, data.description, data.memoryInterval, data.rtspFeed,
+        data.liveState, data.cameraEnabled ? 1 : 0,
+        JSON.stringify(data.linkedChannelIds), JSON.stringify(data.members),
+        data.isBlocked ? 1 : 0, nowIso, nowIso,
+      )
+    return this.getFullChannel(organizationId, id)!
+  }
+
+  async updateChannelData(
+    organizationId: string,
+    channelId: string,
+    fields: Partial<Omit<FullChannelRecord, 'id' | 'organizationId' | 'createdAtIso'>>,
+  ): Promise<FullChannelRecord> {
+    const current = await this.getFullChannel(organizationId, channelId)
+    if (!current) throw new Error('הערוץ לא נמצא.')
+    const nowIso = new Date().toISOString()
+    const merged = { ...current, ...fields, updatedAtIso: nowIso }
+    this.db
+      .prepare(
+        `UPDATE channel_data SET
+          name = ?, type = ?, subtitle = ?, location = ?, watch_scope = ?,
+          description = ?, memory_interval = ?, rtsp_feed = ?, live_state = ?,
+          camera_enabled = ?, linked_channel_ids = ?, members = ?,
+          is_blocked = ?, updated_at_iso = ?
+        WHERE id = ? AND organization_id = ?`,
+      )
+      .run(
+        merged.name, merged.type, merged.subtitle, merged.location, merged.watchScope,
+        merged.description, merged.memoryInterval, merged.rtspFeed, merged.liveState,
+        merged.cameraEnabled ? 1 : 0,
+        JSON.stringify(merged.linkedChannelIds), JSON.stringify(merged.members),
+        merged.isBlocked ? 1 : 0, merged.updatedAtIso,
+        channelId, organizationId,
+      )
+    return (await this.getFullChannel(organizationId, channelId))!
+  }
+
+  async deleteFullChannel(organizationId: string, channelId: string): Promise<void> {
+    this.db.prepare('DELETE FROM operation_runs WHERE channel_id = ? AND organization_id = ?').run(channelId, organizationId)
+    this.db.prepare('DELETE FROM channel_operations WHERE channel_id = ? AND organization_id = ?').run(channelId, organizationId)
+    this.db.prepare('DELETE FROM messages WHERE channel_id = ? AND organization_id = ?').run(channelId, organizationId)
+    this.db.prepare('DELETE FROM channel_data WHERE id = ? AND organization_id = ?').run(channelId, organizationId)
+  }
+
+  /* ============================= הודעות (פר משתמש) ============================= */
+
+  async addMessage(
+    organizationId: string,
+    userId: string,
+    channelId: string,
+    message: Omit<MessageRecord, 'id' | 'organizationId' | 'userId' | 'channelId' | 'createdAtIso'>,
+  ): Promise<MessageRecord> {
+    const id = randomUUID()
+    const createdAtIso = new Date().toISOString()
+    this.db
+      .prepare(
+        `INSERT INTO messages (
+          id, organization_id, user_id, channel_id, author, text, time,
+          alert_level, score, frame_data_url, sources, created_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id, organizationId, userId, channelId, message.author, message.text, message.time,
+        message.alertLevel ?? null, message.score ?? null,
+        message.frameDataUrl ?? null,
+        message.sources ? JSON.stringify(message.sources) : null,
+        createdAtIso,
+      )
+    return rowToMessage(this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as MessageRow)
+  }
+
+  async listMessages(
+    organizationId: string,
+    userId: string,
+    channelId: string,
+    opts?: { limit?: number; beforeIso?: string },
+  ): Promise<MessageRecord[]> {
+    const limit = opts?.limit ?? 200
+    if (opts?.beforeIso) {
+      return (
+        this.db
+          .prepare(
+            'SELECT * FROM messages WHERE organization_id = ? AND user_id = ? AND channel_id = ? AND created_at_iso < ? ORDER BY created_at_iso ASC LIMIT ?',
+          )
+          .all(organizationId, userId, channelId, opts.beforeIso, limit) as MessageRow[]
+      ).map(rowToMessage)
+    }
+    return (
+      this.db
+        .prepare(
+          'SELECT * FROM messages WHERE organization_id = ? AND user_id = ? AND channel_id = ? ORDER BY created_at_iso ASC LIMIT ?',
+        )
+        .all(organizationId, userId, channelId, limit) as MessageRow[]
+    ).map(rowToMessage)
+  }
+
+  /* ============================= מבצעים פר ערוץ ============================= */
+
+  async createChannelOperation(
+    organizationId: string,
+    channelId: string,
+    op: Omit<OperationRecord, 'id' | 'organizationId' | 'channelId' | 'createdAtIso' | 'updatedAtIso'>,
+  ): Promise<OperationRecord> {
+    const id = randomUUID()
+    const nowIso = new Date().toISOString()
+    this.db
+      .prepare(
+        `INSERT INTO channel_operations (
+          id, organization_id, channel_id, name, mode, schedule, trigger_text,
+          action, model_override, detail_level, enabled, parsed_schedule,
+          created_at_iso, updated_at_iso
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id, organizationId, channelId, op.name, op.mode, op.schedule, op.trigger,
+        op.action, op.modelOverride ?? null, op.detailLevel ?? null,
+        op.enabled ? 1 : 0,
+        op.parsedSchedule ? JSON.stringify(op.parsedSchedule) : null,
+        nowIso, nowIso,
+      )
+    return rowToOperation(this.db.prepare('SELECT * FROM channel_operations WHERE id = ?').get(id) as OperationRow)
+  }
+
+  async listChannelOperations(organizationId: string, channelId: string): Promise<OperationRecord[]> {
+    return (
+      this.db
+        .prepare('SELECT * FROM channel_operations WHERE organization_id = ? AND channel_id = ? ORDER BY created_at_iso DESC')
+        .all(organizationId, channelId) as OperationRow[]
+    ).map(rowToOperation)
+  }
+
+  async updateChannelOperation(
+    organizationId: string,
+    channelId: string,
+    opId: string,
+    fields: Partial<Omit<OperationRecord, 'id' | 'organizationId' | 'channelId' | 'createdAtIso'>>,
+  ): Promise<OperationRecord> {
+    const row = this.db
+      .prepare('SELECT * FROM channel_operations WHERE id = ? AND organization_id = ? AND channel_id = ?')
+      .get(opId, organizationId, channelId) as OperationRow | undefined
+    if (!row) throw new Error('המבצע לא נמצא.')
+    const current = rowToOperation(row)
+    const nowIso = new Date().toISOString()
+    const merged = { ...current, ...fields, updatedAtIso: nowIso }
+    this.db
+      .prepare(
+        `UPDATE channel_operations SET
+          name = ?, mode = ?, schedule = ?, trigger_text = ?, action = ?,
+          model_override = ?, detail_level = ?, enabled = ?, parsed_schedule = ?,
+          updated_at_iso = ?
+        WHERE id = ? AND organization_id = ? AND channel_id = ?`,
+      )
+      .run(
+        merged.name, merged.mode, merged.schedule, merged.trigger, merged.action,
+        merged.modelOverride ?? null, merged.detailLevel ?? null,
+        merged.enabled ? 1 : 0,
+        merged.parsedSchedule ? JSON.stringify(merged.parsedSchedule) : null,
+        merged.updatedAtIso, opId, organizationId, channelId,
+      )
+    return rowToOperation(
+      this.db.prepare('SELECT * FROM channel_operations WHERE id = ?').get(opId) as OperationRow,
+    )
+  }
+
+  async deleteChannelOperation(organizationId: string, channelId: string, opId: string): Promise<void> {
+    this.db
+      .prepare('DELETE FROM operation_runs WHERE operation_id = ? AND organization_id = ?')
+      .run(opId, organizationId)
+    this.db
+      .prepare('DELETE FROM channel_operations WHERE id = ? AND organization_id = ? AND channel_id = ?')
+      .run(opId, organizationId, channelId)
+  }
+
+  /* ============================= מבצעים + הרצות פר ארגון ============================= */
+
+  async listAllOperations(organizationId: string): Promise<OperationRecord[]> {
+    return (
+      this.db
+        .prepare('SELECT * FROM channel_operations WHERE organization_id = ? ORDER BY created_at_iso DESC')
+        .all(organizationId) as OperationRow[]
+    ).map(rowToOperation)
+  }
+
+  async listRecentOperationRuns(organizationId: string, limit = 50): Promise<OperationRunRecord[]> {
+    return (
+      this.db
+        .prepare('SELECT * FROM operation_runs WHERE organization_id = ? ORDER BY started_at_iso DESC LIMIT ?')
+        .all(organizationId, limit) as OperationRunRow[]
+    ).map(rowToOperationRun)
+  }
+
+  /* ============================= Scheduler — הרצות מבצעים ============================= */
+
+  async listRunnableOperations(): Promise<OperationRecord[]> {
+    return (
+      this.db
+        .prepare('SELECT * FROM channel_operations WHERE enabled = 1 AND parsed_schedule IS NOT NULL')
+        .all() as OperationRow[]
+    ).map(rowToOperation)
+  }
+
+  async acquireOperationRunLock(organizationId: string, channelId: string, operationId: string): Promise<OperationRunRecord | null> {
+    const existing = this.db
+      .prepare("SELECT id FROM operation_runs WHERE operation_id = ? AND status IN ('queued', 'running')")
+      .get(operationId) as { id: string } | undefined
+    if (existing) return null
+
+    const id = randomUUID()
+    const nowIso = new Date().toISOString()
+    this.db
+      .prepare(
+        `INSERT INTO operation_runs (id, organization_id, channel_id, operation_id, status, started_at_iso)
+         VALUES (?, ?, ?, ?, 'running', ?)`,
+      )
+      .run(id, organizationId, channelId, operationId, nowIso)
+    return rowToOperationRun(
+      this.db.prepare('SELECT * FROM operation_runs WHERE id = ?').get(id) as OperationRunRow,
+    )
+  }
+
+  async completeOperationRun(runId: string): Promise<OperationRunRecord> {
+    const nowIso = new Date().toISOString()
+    this.db
+      .prepare("UPDATE operation_runs SET status = 'success', ended_at_iso = ? WHERE id = ?")
+      .run(nowIso, runId)
+    return rowToOperationRun(
+      this.db.prepare('SELECT * FROM operation_runs WHERE id = ?').get(runId) as OperationRunRow,
+    )
+  }
+
+  async failOperationRun(runId: string, errorCode: string, errorMessage: string): Promise<OperationRunRecord> {
+    const nowIso = new Date().toISOString()
+    this.db
+      .prepare("UPDATE operation_runs SET status = 'failed', ended_at_iso = ?, error_code = ?, error_message = ? WHERE id = ?")
+      .run(nowIso, errorCode, errorMessage, runId)
+    return rowToOperationRun(
+      this.db.prepare('SELECT * FROM operation_runs WHERE id = ?').get(runId) as OperationRunRow,
+    )
   }
 }

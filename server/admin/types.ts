@@ -20,6 +20,7 @@ export interface OrganizationUsage {
   receivedMessages: number
   devicesCount: number
   channelsCount: number
+  operationsCount: number
   aiTotalCost: number
   apiTotalCost: number
   agentsTotalCost: number
@@ -54,6 +55,8 @@ export interface UserRecord {
   id: string
   organizationId: string
   username: string
+  firstName: string
+  lastName: string
   firebaseUid?: string
   passwordHash: string
   role: UserRole
@@ -114,6 +117,72 @@ export interface RefreshTokenRecord {
   tokenId: string
   userId: string
   expiresAtUnix: number
+}
+
+export interface FullChannelRecord {
+  id: string
+  organizationId: string
+  name: string
+  type: 'personal' | 'group'
+  subtitle: string
+  location: string
+  watchScope: string
+  description: string
+  memoryInterval: number
+  rtspFeed: string
+  liveState: 'LIVE' | 'SYNC' | 'DEGRADED' | 'OFFLINE'
+  cameraEnabled: boolean
+  linkedChannelIds: string[]
+  members: string[]
+  isBlocked: boolean
+  createdAtIso: string
+  updatedAtIso: string
+}
+
+export interface MessageRecord {
+  id: string
+  organizationId: string
+  userId: string
+  channelId: string
+  author: 'user' | 'ghost' | 'system'
+  text: string
+  time: string
+  alertLevel?: 'critical' | 'routine' | 'report' | 'rating' | 'assessment'
+  score?: number
+  frameDataUrl?: string
+  sources?: string[]
+  createdAtIso: string
+}
+
+export interface OperationRecord {
+  id: string
+  organizationId: string
+  channelId: string
+  name: string
+  mode: 'alert' | 'report' | 'rating' | 'assessment'
+  schedule: string
+  trigger: string
+  action: string
+  modelOverride?: 'gpt-4.1' | 'gpt-4.1-mini'
+  detailLevel?: 'low' | 'auto' | 'high'
+  enabled: boolean
+  parsedSchedule?: Record<string, unknown>
+  createdAtIso: string
+  updatedAtIso: string
+}
+
+export type OperationRunStatus = 'queued' | 'running' | 'success' | 'failed'
+
+export interface OperationRunRecord {
+  id: string
+  organizationId: string
+  channelId: string
+  operationId: string
+  status: OperationRunStatus
+  startedAtIso: string
+  endedAtIso?: string
+  errorCode?: string
+  errorMessage?: string
 }
 
 export interface AdminDataStoreState {

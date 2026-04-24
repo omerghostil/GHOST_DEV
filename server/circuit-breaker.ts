@@ -42,12 +42,12 @@ export class CircuitBreaker {
   async execute<T>(operation: () => Promise<T>): Promise<T> {
     this.transitionStateIfNeeded()
     if (this.state === 'open') {
-      throw new Error('OPENAI_CIRCUIT_OPEN')
+      throw new Error('AI_CIRCUIT_OPEN')
     }
 
     if (this.state === 'half-open') {
       if (this.halfOpenAttempts >= this.config.halfOpenMaxAttempts) {
-        throw new Error('OPENAI_CIRCUIT_OPEN')
+        throw new Error('AI_CIRCUIT_OPEN')
       }
       this.halfOpenAttempts += 1
     }

@@ -11,10 +11,12 @@ import {
 import { createAuthRouter } from './admin/create-auth-router'
 import { createAdminRouter } from './admin/create-admin-router'
 import { createIssuesRouter } from './issues/create-issues-router'
+import { createChannelsRouter } from './channels/create-channels-router'
 import { requireAuth } from './middleware/auth-guard'
 import type { IAdminRepository } from './db/repository-types'
 import type { IRealtimeHub } from './realtime/realtime-hub-types'
 import { decryptSensitiveValue } from './security/crypto-utils'
+import { mapQueueErrorToHttp } from './queue-error-mapper'
 
 const OPENAI_MODEL = 'gpt-4.1-mini'
 const OPENAI_TIMEOUT_MS = 20000
@@ -260,6 +262,7 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
   app.use('/api/auth', createAuthRouter({ store }))
   app.use('/api/admin', createAdminRouter({ store, realtimeHub }))
   app.use('/api/issues', createIssuesRouter({ store, realtimeHub }))
+  app.use('/api/channels', createChannelsRouter({ store, realtimeHub }))
 
   app.post('/api/chat-vision', requireAuth, async (request, response) => {
     const parsed = SharedChatVisionRequestSchema.safeParse(request.body)
@@ -268,7 +271,7 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
     const apiKey = resolveOpenAiApiKey(store, request.auth?.organizationId)
     if (!apiKey) {
       return response.status(503).json({
-        error: 'OPENAI_API_KEY לא הוגדר. העתק .env.example לקובץ .env והדבק מפתח API תקף.',
+        error: 'מפתח AI לא הוגדר בסביבה. ודא שהסביבה מוגדרת כראוי.',
       })
     }
 
@@ -276,8 +279,8 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
       const result = await enqueueVisionChat(parsed.data, apiKey, JobPriority.CRITICAL)
       return response.json({ text: result.text, sources: result.sources })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'שגיאה פנימית לא ידועה.'
-      return response.status(502).json({ error: `ניתוח התמונה נכשל: ${message}` })
+      const mapped = mapQueueErrorToHttp(error, 'ניתוח התמונה נכשל')
+      return response.status(mapped.statusCode).json({ error: mapped.errorMessage })
     }
   })
 
@@ -288,7 +291,7 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
     const apiKey = resolveOpenAiApiKey(store, request.auth?.organizationId)
     if (!apiKey) {
       return response.status(503).json({
-        error: 'OPENAI_API_KEY לא הוגדר. העתק .env.example לקובץ .env והדבק מפתח API תקף.',
+        error: 'מפתח AI לא הוגדר בסביבה. ודא שהסביבה מוגדרת כראוי.',
       })
     }
 
@@ -296,8 +299,8 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
       const data = await enqueueOperationScan(parsed.data, apiKey, JobPriority.NORMAL)
       return response.json(data)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'שגיאה פנימית לא ידועה.'
-      return response.status(502).json({ error: `סריקת מבצעים נכשלה: ${message}` })
+      const mapped = mapQueueErrorToHttp(error, 'סריקת מבצעים נכשלה')
+      return response.status(mapped.statusCode).json({ error: mapped.errorMessage })
     }
   })
 
@@ -308,7 +311,7 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
     const openai = buildOpenAiClient(store, request.auth?.organizationId)
     if (!openai) {
       return response.status(503).json({
-        error: 'OPENAI_API_KEY לא הוגדר. העתק .env.example לקובץ .env והדבק מפתח API תקף.',
+        error: 'מפתח AI לא הוגדר בסביבה. ודא שהסביבה מוגדרת כראוי.',
       })
     }
 
@@ -328,7 +331,7 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
     const openai = buildOpenAiClient(store, request.auth?.organizationId)
     if (!openai) {
       return response.status(503).json({
-        error: 'OPENAI_API_KEY לא הוגדר. העתק .env.example לקובץ .env והדבק מפתח API תקף.',
+        error: 'מפתח AI לא הוגדר בסביבה. ודא שהסביבה מוגדרת כראוי.',
       })
     }
 
@@ -352,7 +355,16 @@ export function createApp(store: IAdminRepository, realtimeHub: IRealtimeHub): e
   })
 
   app.get('/api/health', (_request, response) => {
-    response.json({ ok: true })
+    const mem = process.memoryUsage()
+    response.json({
+      ok: true,
+      uptime: process.uptime(),
+      memory: {
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+        rss: Math.round(mem.rss / 1024 / 1024),
+      },
+    })
   })
 
   return app

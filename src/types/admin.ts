@@ -1,8 +1,11 @@
 export interface AuthProfile {
   userId: string
   organizationId: string
+  organizationName: string
   role: 'super_admin' | 'system_manager' | 'regular_user'
   username: string
+  firstName: string
+  lastName: string
 }
 
 export interface AuthLoginResponse {
@@ -25,6 +28,7 @@ export interface OrganizationUsage {
   receivedMessages: number
   devicesCount: number
   channelsCount: number
+  operationsCount: number
   aiTotalCost: number
   apiTotalCost: number
   agentsTotalCost: number
@@ -47,6 +51,7 @@ export interface SuperAdminOverviewResponse {
     receivedMessages: number
     devicesCount: number
     channelsCount: number
+    operationsCount: number
     aiTotalCost: number
     apiTotalCost: number
     agentsTotalCost: number
@@ -116,9 +121,39 @@ export interface ChannelUsageMonthly {
   operationsCountActive: number
 }
 
+export interface AdminOperationRecord {
+  id: string
+  organizationId: string
+  channelId: string
+  name: string
+  mode: 'alert' | 'report' | 'rating' | 'assessment'
+  schedule: string
+  trigger: string
+  action: string
+  modelOverride?: string
+  detailLevel?: string
+  enabled: boolean
+  createdAtIso: string
+  updatedAtIso: string
+}
+
+export interface AdminOperationRunRecord {
+  id: string
+  organizationId: string
+  channelId: string
+  operationId: string
+  status: 'queued' | 'running' | 'success' | 'failed'
+  startedAtIso: string
+  endedAtIso?: string
+  errorCode?: string
+  errorMessage?: string
+}
+
 export interface OrganizationDetailsResponse {
   organization: OrganizationSummary
   channels: OrganizationChannel[]
+  operations: AdminOperationRecord[]
+  recentRuns: AdminOperationRunRecord[]
   campaigns: OrganizationCampaign[]
   users: OrganizationUser[]
   usageLedger: OrganizationUsageLedger[]

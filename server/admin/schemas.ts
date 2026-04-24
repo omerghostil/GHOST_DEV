@@ -40,6 +40,8 @@ export const UpdateOrganizationSchema = z.object({
 export const CreateUserSchema = z.object({
   organizationId: z.string().uuid(),
   username: z.string().min(3),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
   password: z.string().min(8),
   role: z.enum([USER_ROLES.systemManager, USER_ROLES.regularUser]),
   allowedChannelIds: z.array(z.string()).default([]),
@@ -89,6 +91,7 @@ export const RecordUsageSchema = z.object({
   receivedMessages: z.number().int().nonnegative().default(0),
   devicesCount: z.number().int().nonnegative().default(0),
   channelsCount: z.number().int().nonnegative().default(0),
+  operationsCount: z.number().int().nonnegative().default(0),
   aiTotalCost: z.number().nonnegative().default(0),
   apiTotalCost: z.number().nonnegative().default(0),
   agentsTotalCost: z.number().nonnegative().default(0),

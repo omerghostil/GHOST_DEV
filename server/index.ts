@@ -8,15 +8,16 @@ import { FirebaseRealtimeHub } from './realtime/firebase-hub'
 import type { IAdminRepository } from './db/repository-types'
 import type { IRealtimeHub } from './realtime/realtime-hub-types'
 import { ensureFirebaseBootstrapUser } from './auth/firebase-auth-service'
+import { ServerOperationScheduler } from './operations/operation-scheduler'
 
 function readBootstrapCredentials(): { username: string; password: string } {
   return {
-    username: process.env.SUPER_ADMIN_USERNAME?.trim() || 'omer',
-    password: process.env.SUPER_ADMIN_PASSWORD?.trim() || 'ghostadmin8888',
+    username: process.env.SUPER_ADMIN_USERNAME?.trim() || 'omeradmin',
+    password: process.env.SUPER_ADMIN_PASSWORD?.trim() || 'omeradmin',
   }
 }
 
-const SERVER_PORT = Number(process.env.PORT ?? 8787)
+const SERVER_PORT = Number(process.env.PORT ?? 7722)
 const IS_FIREBASE = Boolean(process.env.FIREBASE_PROJECT_ID)
 
 async function bootstrap(): Promise<void> {
@@ -33,6 +34,8 @@ async function bootstrap(): Promise<void> {
     realtimeHub = new FirebaseRealtimeHub()
     const app = createApp(store, realtimeHub)
     const httpServer = createServer(app)
+    const scheduler = new ServerOperationScheduler(store)
+    scheduler.start()
     httpServer.listen(SERVER_PORT, () => {
       console.log(`Vision proxy ready on http://localhost:${SERVER_PORT}`)
     })
@@ -42,11 +45,13 @@ async function bootstrap(): Promise<void> {
     const httpServer = createServer()
     realtimeHub = new RealtimeHub(httpServer)
     const app = createApp(store, realtimeHub)
+    const scheduler = new ServerOperationScheduler(store)
+    scheduler.start()
     httpServer.on('request', app)
     httpServer.listen(SERVER_PORT, () => {
       console.log(`Vision proxy ready on http://localhost:${SERVER_PORT}`)
       if (!process.env.OPENAI_API_KEY) {
-        console.warn('[server] אין OPENAI_API_KEY — נקודות /api יחזירו 503 עד להגדרת .env')
+        console.warn('[server] מפתח AI לא הוגדר — נקודות /api יחזירו 503 עד להגדרת .env')
       }
     })
   }
