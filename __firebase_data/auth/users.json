@@ -1,0 +1,44 @@
+{"users": [
+{
+  "localId": "3x0cAhaKyZQmoz66Ncccu1akGnG2",
+  "email": "omer@ghost-il.com",
+  "emailVerified": false,
+  "passwordHash": "DuFJ+ZJby8odhfD7hHX3UMC1D9rP1ClfdQIrtAQURN9+wzhUolHTQH5u7FNWX9NEePDRlCH10EhtwQn1ELuYEw==",
+  "salt": "PNSD/5W89iG2nA==",
+  "createdAt": "1774531956454",
+  "disabled": false,
+  "providerUserInfo": []
+},
+{
+  "localId": "cXXKYMz1fEWvnb6cnvDvo8MOge52",
+  "email": "evgeni@ghost-il.com",
+  "emailVerified": false,
+  "passwordHash": "37/JYkoxAW5RqCs5qMD24hFkBgI/4JN5q0MF8D9QDwG7L+fyrZmlQn6HNkzd2EQRLS24V02DZvlK50X5YhmqmQ==",
+  "salt": "CPRxohojkNumxw==",
+  "createdAt": "1774531448441",
+  "disabled": false,
+  "providerUserInfo": []
+},
+{
+  "localId": "orp0EiNGPDUsRxjXwn08rpcYYLp1",
+  "email": "omer@ghost.internal",
+  "emailVerified": false,
+  "passwordHash": "wWIXLqDEk2MCR7dCfQqath5Blt6DF0HnlrQ7Oqg9doFxthsI2GehoTXvnGuV3cOWQwq1x6KqnqwF3xx1ehkt2A==",
+  "salt": "sdDMZf4bt9ENnQ==",
+  "displayName": "omer",
+  "lastSignedInAt": "1778741840189",
+  "createdAt": "1774531435392",
+  "disabled": false,
+  "providerUserInfo": []
+},
+{
+  "localId": "wLIwc2jztSO81c1vQ9QCiA0eOM12",
+  "email": "test123@ghost.internal",
+  "emailVerified": false,
+  "passwordHash": "PhYNahfh57ot3waux3B7HWwTVebuNRbnIXBlC5s8SOowGRaOm3o8hr7/831xSA7D8bth7YduqzvXhYr3rmVXNw==",
+  "salt": "3cUd2o7fefInxw==",
+  "displayName": "test123",
+  "createdAt": "1774531771383",
+  "disabled": false,
+  "providerUserInfo": []
+}]}
